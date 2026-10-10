@@ -59,8 +59,9 @@ sysinfo.txt
 crashlytics-build.properties
 
 
-# Standalone determinism-test builds and raw per-run logs — reproducible from
-# HohimBrueh/Assets/Scripts/DeterminismTests/, no need to track the binaries
+# Standalone determinism-test builds and raw per-run logs. The harness was removed after
+# SMA-15; restore it with `git checkout c7b95f2 -- HohimBrueh/Assets/Scripts/DeterminismTests`.
+# No need to track the binaries
 # or the full per-case log dump. Summary checksums are small and worth keeping.
 /builds/
 DeterminismResults/*-log.txt
