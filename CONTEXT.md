@@ -9,7 +9,7 @@ A persistent match participant — owns an input device, a color, a team (if tea
 _Avoid_: Character (see below), user
 
 **Character**:
-The physical frog body a Player currently controls in a Round. Destroyed on death and (usually) respawned after a delay; a Player can exist with no live Character between deaths.
+The physical frog body a Player currently controls in a Round. Despawned on death and (usually) Spawned again after a delay; a Player can exist with no live Character between deaths.
 _Avoid_: Player, Frog, body
 
 **Percent**:
@@ -35,3 +35,33 @@ _Avoid_: Round, Series, Game
 **Showdown**:
 A sudden-death Match mode: landing a kill removes the victim from active play entirely (no points awarded) instead of scoring, continuing until one Player or team remains.
 _Avoid_: Elimination mode, Sudden Death (these are fine as plain-English descriptions, but "Showdown" is the term the code and this model use)
+
+### The simulation
+
+**Tick**:
+One fixed step of the game's simulation, 1/60 of a second of game time. Ticks are numbered from 0 at the start of each Round. Hindsight calls this a Frame.
+_Avoid_: frame (in this game, a frame is a Render Frame), step, update
+
+**Render Frame**:
+One image Unity draws. A Render Frame can run zero, one or several Ticks, depending on the frame rate.
+_Avoid_: tick, frame (when the context does not make it clear)
+
+**Simulation State**:
+Every gameplay fact of a Round at the start of a Tick: what a Rollback must restore exactly, and what two machines must agree on. Hindsight stores it as opaque Saved State bytes.
+_Avoid_: game state, snapshot, world
+
+**Round Setup**:
+The facts fixed before Tick 0 of a Round and constant through it: the Level, the starting roster, teams, the game mode, the option toggles and the random seed. Agreed before the Round starts, so it is never part of Simulation State.
+_Avoid_: config, settings, match state
+
+**Slot**:
+A Player's fixed position in the six-player roster (four gamepads, two keyboard halves). A Player and that Player's Character share one Slot, and Slot order is the order the simulation processes them in.
+_Avoid_: index, id, player number
+
+**Spawn**:
+A Character or the fly entering play during a Round. The opposite is **Despawn**. Both are changes to Simulation State, so a Rollback can undo them.
+_Avoid_: instantiate, destroy, create, kill
+
+**Cosmetic Effect**:
+A sound, particle, popup or screen shake that the simulation triggers but that is not part of Simulation State. It plays when a Tick first runs and does not play again when a Rollback runs that Tick again.
+_Avoid_: effect (alone), feedback, juice
