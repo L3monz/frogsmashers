@@ -14,7 +14,7 @@ public enum GameState
 }
 
 
-public class GameController : MonoBehaviour, ISimulated
+public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 {
     public static bool charactersBounceEachOther = false;
     public static bool weirdBounceTrajectories = false;
@@ -88,6 +88,13 @@ public class GameController : MonoBehaviour, ISimulated
         }
         playerScoreDisplays = new List<PlayerScoreDisplay>();
         instance = this;
+
+        // A round is a self-contained simulation: it starts at tick 0 when its scene loads.
+        // Without this the tick kept counting across scenes, so a round's state (the fly's
+        // bob phase, for example) depended on how long the previous scenes had run. Online,
+        // both peers start the round together at tick 0 with the roster and seed the
+        // session agreed on (SMA-23).
+        SimClock.SeekTo(0);
         if (inactivePlayers == null)
         {
             inactivePlayers = new List<Player>();
@@ -218,52 +225,124 @@ public class GameController : MonoBehaviour, ISimulated
     }
 
     /// <summary>
-    /// The parts of match flow that are simulation: when a fly appears and when a dead frog
-    /// comes back.
+    /// Match flow for one round. This is the simulation part of GameController (SMA-23).
     ///
-    /// These were counting down Time.deltaTime in Update(), which meant *when* a fly spawned
-    /// depended on your frame rate. Two machines running at different frame rates would spawn
-    /// it on different ticks, and a fly is worth points, so that is a desync rather than a
-    /// cosmetic difference. On the tick they land on the same one everywhere.
+    /// The boundary: a round is the simulation, from scene load to the end of the round.
+    /// Everything that changes game state during a round runs here, on the tick: drop-in
+    /// joins, fly spawns, respawns, and the end of the round. Scoring and the round win are
+    /// in RegisterKill, which Character calls from inside its own tick.
     ///
-    /// Registered before any character exists (this is a scene object, they are spawned), so
-    /// it ticks first and spawns happen at the start of a tick rather than halfway through one.
+    /// Not simulation, and so in Update(): the join screen (a lobby before the match;
+    /// online, the session agrees on the roster, teams and seed before tick 0), the scene
+    /// changes that FinishRound starts, and all view code (scoreboards, offscreen dots).
     ///
-    /// Still outstanding: the round-finished timers and the join-screen countdown further down
-    /// in Update() are also on Time.deltaTime. They matter less — nobody is scoring during them
-    /// — but they do decide which tick the next round starts on, so they need the same
-    /// treatment before a session can be replayed end to end.
+    /// Registered before any character exists (this is a scene object, they are spawned),
+    /// so it ticks first and spawns happen at the start of a tick rather than halfway
+    /// through one.
     /// </summary>
     public void SimulateTick(float deltaTime)
     {
-        if (state != GameState.Playing)
-            return;
-
-        if (activeFly == null && !isShowDown)
+        if (state == GameState.Playing)
         {
-            if (flySpawnDelay > 0f)
-            {
-                flySpawnDelay -= deltaTime;
-                if (flySpawnDelay <= 0f)
-                    activeFly = Instantiate(flyPrefab, Terrain.GetFlySpawnPoint(), Quaternion.identity);
-            }
-            else
-            {
-                flySpawnDelay = SimRng.Range(15f, 45f);
-            }
-        }
+            ApplyPendingJoins();
 
-        for (int i = 0; i < activePlayers.Count; i++)
-        {
-            if (activePlayers[i].character == null)
+            if (activeFly == null && !isShowDown)
             {
-                activePlayers[i].spawnDelay -= deltaTime;
-                if (activePlayers[i].spawnDelay < 0f)
+                if (flySpawnDelay > 0f)
                 {
-                    SpawnCharacter(activePlayers[i]);
+                    flySpawnDelay -= deltaTime;
+                    if (flySpawnDelay <= 0f)
+                        activeFly = Instantiate(flyPrefab, Terrain.GetFlySpawnPoint(), Quaternion.identity);
+                }
+                else
+                {
+                    flySpawnDelay = SimRng.Range(15f, 45f);
+                }
+            }
+
+            for (int i = 0; i < activePlayers.Count; i++)
+            {
+                if (activePlayers[i].character == null)
+                {
+                    activePlayers[i].spawnDelay -= deltaTime;
+                    if (activePlayers[i].spawnDelay < 0f)
+                    {
+                        SpawnCharacter(activePlayers[i]);
+                    }
                 }
             }
         }
+        else if (state == GameState.RoundFinished)
+        {
+            // The winner respawns for a victory lap. The other frogs keep playing, so the
+            // round is still visible gameplay, and it ends on the same tick everywhere.
+            for (int i = 0; i < activePlayers.Count; i++)
+            {
+                if (activePlayers[i].character == null && winningPlayer == activePlayers[i])
+                {
+                    activePlayers[i].spawnDelay -= deltaTime;
+                    if (activePlayers[i].spawnDelay < 0f)
+                    {
+                        SpawnCharacter(activePlayers[i]);
+                    }
+                }
+            }
+
+            finishDelay -= deltaTime;
+            if (finishDelay < 0f && !roundEnding)
+            {
+                // The scene change happens at the end of the frame, and one frame can run
+                // several ticks. Without this flag, each remaining tick would call
+                // FinishRound again and skip a level.
+                roundEnding = true;
+                FinishRound();
+            }
+        }
+    }
+
+    // Set once FinishRound has started the scene change. See SimulateTick.
+    bool roundEnding;
+
+    // Players who pressed join this tick. Filled by SampleInput, applied by SimulateTick.
+    readonly List<Player> pendingJoins = new List<Player>();
+
+    /// <summary>
+    /// Reads the join button of every player who is not in the match yet.
+    ///
+    /// Drop-in joining used to read the devices and add the player in Update(), from the
+    /// frame loop. Now the read happens here, in the driver's input phase, and the join
+    /// happens on the tick. The next step is Milestone 4: a join becomes part of that slot's
+    /// recorded input, so a replay applies it on the same tick. Online, the roster is fixed
+    /// when the round starts.
+    /// </summary>
+    public void SampleInput()
+    {
+        pendingJoins.Clear();
+        if (state != GameState.Playing || isShowDown)
+            return;
+
+        for (int i = 0; i < inactivePlayers.Count; i++)
+        {
+            InputReader.GetInput(inactivePlayers[i].inputDevice, input);
+            if (input.xButton)
+                pendingJoins.Add(inactivePlayers[i]);
+        }
+    }
+
+    void ApplyPendingJoins()
+    {
+        for (int i = 0; i < pendingJoins.Count; i++)
+        {
+            var player = pendingJoins[i];
+            if (!inactivePlayers.Contains(player))
+                continue;
+
+            // sim-guard: allow player colour is cosmetic
+            player.color = playerColors[Random.Range(0, playerColors.Length)];
+            AddPlayer(player);
+            inactivePlayers.Remove(player);
+        }
+        pendingJoins.Clear();
     }
 
     void Update()
@@ -297,7 +376,7 @@ public class GameController : MonoBehaviour, ISimulated
 
             if (playersAreReady)
             {
-// sim-guard: todo SMA-23 join-screen countdown still runs on frame time
+                // sim-guard: allow join-screen lobby, before the match; not part of the round's simulation
                 finishDelay -= Time.deltaTime;
                 joinCountdownText.text = ((int)(finishDelay) + 1).ToString();
                 if (finishDelay <= 0f)
@@ -346,24 +425,9 @@ public class GameController : MonoBehaviour, ISimulated
 
             ArrangeScoreboards();
 
+            // Drop-in joins are read in SampleInput and applied in SimulateTick.
             if (!isShowDown)
             {
-                for (int i = inactivePlayers.Count - 1; i >= 0; i--)
-                {
-                    InputReader.GetInput(inactivePlayers[i].inputDevice, input);
-
-                    if (input.xButton)
-                    {
-                        print(inactivePlayers[i].color + ", " + inactivePlayers[i].inputDevice);
-                        // sim-guard: allow player colour is cosmetic
-                        inactivePlayers[i].color = playerColors[Random.Range(0, playerColors.Length)];
-                        AddPlayer(inactivePlayers[i]);
-
-
-                        inactivePlayers.RemoveAt(i);
-                    }
-                }
-
                 // sim-guard: allow debug key (spawn a frog with no player); not used in a real match
                 if (Input.GetKeyDown(KeyCode.F2))
                 {
@@ -379,26 +443,8 @@ public class GameController : MonoBehaviour, ISimulated
         }
         else if (state == GameState.RoundFinished)
         {
+            // The winner's respawn and the end of the round are in SimulateTick.
             ArrangeScoreboards();
-
-            for (int i = 0; i < activePlayers.Count; i++)
-            {
-                if (activePlayers[i].character == null && winningPlayer == activePlayers[i])
-                {
-                    // sim-guard: todo SMA-23 winner respawn after the round still runs on frame time
-                    activePlayers[i].spawnDelay -= Time.deltaTime;
-                    if (activePlayers[i].spawnDelay < 0f)
-                    {
-                        SpawnCharacter(activePlayers[i]);
-                    }
-                }
-            }
-
-
-// sim-guard: todo SMA-23 round-finished delay still runs on frame time
-            finishDelay -= Time.deltaTime;
-            if (finishDelay < 0f)
-                FinishRound();
         }
 
         // sim-guard: allow debug key (reload the scene); not simulation
