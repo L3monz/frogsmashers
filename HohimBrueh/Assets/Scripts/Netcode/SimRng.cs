@@ -1,4 +1,4 @@
-using Rollback.Determinism;
+using Hindsight.Determinism;
 using UnityEngine;
 
 namespace FrogSmashers.Netcode

@@ -38,7 +38,7 @@ RSP="$OUT/compile.rsp"
   for name in Unity.InputSystem UnityEngine.UI Unity.TextMeshPro; do
     [ -f "$SCRIPTASM/$name.dll" ] && echo "-r:\"$(wslpath -w "$SCRIPTASM/$name.dll")\""
   done
-  for dll in "$PROJECT_ROOT/HohimBrueh/Assets/Plugins/Rollback/"*.dll; do
+  for dll in "$PROJECT_ROOT/HohimBrueh/Assets/Plugins/Hindsight/"*.dll; do
     [ -f "$dll" ] && echo "-r:\"$(wslpath -w "$dll")\""
   done
   find "$PROJECT_ROOT/HohimBrueh/Assets" -name '*.cs' -not -path '*/Editor/*' | while read -r f; do
