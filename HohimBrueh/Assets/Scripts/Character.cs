@@ -374,6 +374,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
         else if (state == CharacterState.Tounge)
             RunTongue();
 
+        // sim-guard: allow editor-only debug key (self-hit); never pressed in a real match
         if (input.yButton && !input.wasYButton && Application.isEditor)
         {
             Vector2 dir = Vector2.zero;

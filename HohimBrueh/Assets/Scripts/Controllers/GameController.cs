@@ -297,6 +297,7 @@ public class GameController : MonoBehaviour, ISimulated
 
             if (playersAreReady)
             {
+// sim-guard: todo SMA-23 join-screen countdown still runs on frame time
                 finishDelay -= Time.deltaTime;
                 joinCountdownText.text = ((int)(finishDelay) + 1).ToString();
                 if (finishDelay <= 0f)
@@ -354,6 +355,7 @@ public class GameController : MonoBehaviour, ISimulated
                     if (input.xButton)
                     {
                         print(inactivePlayers[i].color + ", " + inactivePlayers[i].inputDevice);
+                        // sim-guard: allow player colour is cosmetic
                         inactivePlayers[i].color = playerColors[Random.Range(0, playerColors.Length)];
                         AddPlayer(inactivePlayers[i]);
 
@@ -362,12 +364,14 @@ public class GameController : MonoBehaviour, ISimulated
                     }
                 }
 
+                // sim-guard: allow debug key (spawn a frog with no player); not used in a real match
                 if (Input.GetKeyDown(KeyCode.F2))
                 {
                     SpawnCharacter(null);
                 }
             }
 
+            // sim-guard: allow leaves the match for the title screen; not simulation
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScreen");
@@ -381,6 +385,7 @@ public class GameController : MonoBehaviour, ISimulated
             {
                 if (activePlayers[i].character == null && winningPlayer == activePlayers[i])
                 {
+                    // sim-guard: todo SMA-23 winner respawn after the round still runs on frame time
                     activePlayers[i].spawnDelay -= Time.deltaTime;
                     if (activePlayers[i].spawnDelay < 0f)
                     {
@@ -390,16 +395,19 @@ public class GameController : MonoBehaviour, ISimulated
             }
 
 
+// sim-guard: todo SMA-23 round-finished delay still runs on frame time
             finishDelay -= Time.deltaTime;
             if (finishDelay < 0f)
                 FinishRound();
         }
 
+        // sim-guard: allow debug key (reload the scene); not simulation
         if (Input.GetKeyDown(KeyCode.F6))
         {
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
 
+        // sim-guard: allow debug key (toggle the settings GUI); view only
         if (Input.GetKeyDown(KeyCode.F12))
         {
             showGui = !showGui;
@@ -466,6 +474,7 @@ public class GameController : MonoBehaviour, ISimulated
         {
             var p = playerScoreDisplays[i].transform.localPosition;
             //print(p);
+            // sim-guard: allow scoreboard animation; view only
             p.y = Mathf.Lerp(p.y, i * -2f, Time.deltaTime * 3f);
             p.z = 0f;
             //print(p);
@@ -732,6 +741,7 @@ public class GameController : MonoBehaviour, ISimulated
 
     public static Color GetAvailableColor()
     {
+        // sim-guard: allow player colour on the join screen is cosmetic
         int i = UnityEngine.Random.Range(0, instance.availableColors.Count);
         var col = instance.availableColors[i];
         instance.availableColors.RemoveAt(i);

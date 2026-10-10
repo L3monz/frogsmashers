@@ -78,6 +78,7 @@ namespace FrogSmashers.Netcode
             // This is a one-time read before the first tick, not a read inside the
             // simulation. Online, the session replaces this with a seed that all peers agree
             // on (Milestone 5).
+            // sim-guard: allow offline seed, read once before the first tick; online, the session supplies it
             SimRng.Seed((ulong)System.DateTime.UtcNow.Ticks);
 
             // Set explicitly. The project's Physics2DSettings.asset is in an old format with
@@ -129,6 +130,7 @@ namespace FrogSmashers.Netcode
 
         private void Update()
         {
+            // sim-guard: allow the driver reads frame time only to decide how many ticks to run
             accumulator += Time.deltaTime;
 
             int ticksRun = 0;

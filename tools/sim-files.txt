@@ -1,0 +1,36 @@
+# Files that contain simulation code. tools/sim-guard.py checks every line in them.
+#
+# Simulation code is everything a rollback replays: it must give the same result from the
+# same state and the same inputs, on every machine, every time. Paths are relative to
+# HohimBrueh/Assets.
+#
+# A file goes on this list if any of its code runs inside a tick. Mixed files are listed
+# too. Their view code (UI, effects, debug keys) stays in place, marked with a
+# "sim-guard: allow" comment that says why it is not simulation. That keeps the boundary
+# visible in the code itself.
+#
+# Not listed on purpose: CharacterAnimator, EffectsController and the other view classes
+# (they only draw what the simulation decided), SimDiagnostics (playtest instrumentation,
+# reads but never writes), and InputReader (input sampling happens before the tick, and a
+# replay does not call it).
+
+# The game objects that tick.
+Scripts/Character.cs
+Fly.cs
+
+# Match flow: spawns and timers are simulation, the scoreboard and join UI are not.
+Scripts/Controllers/GameController.cs
+
+# Spawn points and kill bounds.
+Scripts/Controllers/Terrain.cs
+
+# The simulation's own infrastructure.
+Scripts/Netcode/FrogInput.cs
+Scripts/Netcode/ISimulated.cs
+Scripts/Netcode/SimClock.cs
+Scripts/Netcode/SimQuery.cs
+Scripts/Netcode/SimRng.cs
+
+# The driver is the boundary: the one place that may read the wall clock, and only to
+# decide how many ticks to run. Listed so that each clock read needs an explicit allow.
+Scripts/Netcode/SimulationDriver.cs

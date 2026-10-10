@@ -54,3 +54,7 @@ if grep -E ": error" <<<"$OUTPUT"; then
   exit 1
 fi
 echo "compile clean"
+
+# Determinism guard (SMA-18): simulation code must not read the clock, draw unsynced random
+# numbers, call transcendental functions, or read devices directly. See tools/sim-guard.py.
+python3 "$PROJECT_ROOT/tools/sim-guard.py"
