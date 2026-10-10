@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using FreeLives;
+using FrogSmashers.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -13,7 +14,7 @@ public enum GameState
 }
 
 
-public class GameController : MonoBehaviour
+public class GameController : MonoBehaviour, ISimulated
 {
     public static bool charactersBounceEachOther = false;
     public static bool weirdBounceTrajectories = false;
@@ -205,6 +206,66 @@ public class GameController : MonoBehaviour
 
     FreeLives.InputState input = new InputState();
     FreeLives.InputState combinedInput = new InputState();
+
+    void OnEnable()
+    {
+        SimulationDriver.Register(this);
+    }
+
+    void OnDisable()
+    {
+        SimulationDriver.Unregister(this);
+    }
+
+    /// <summary>
+    /// The parts of match flow that are simulation: when a fly appears and when a dead frog
+    /// comes back.
+    ///
+    /// These were counting down Time.deltaTime in Update(), which meant *when* a fly spawned
+    /// depended on your frame rate. Two machines running at different frame rates would spawn
+    /// it on different ticks, and a fly is worth points, so that is a desync rather than a
+    /// cosmetic difference. On the tick they land on the same one everywhere.
+    ///
+    /// Registered before any character exists (this is a scene object, they are spawned), so
+    /// it ticks first and spawns happen at the start of a tick rather than halfway through one.
+    ///
+    /// Still outstanding: the round-finished timers and the join-screen countdown further down
+    /// in Update() are also on Time.deltaTime. They matter less — nobody is scoring during them
+    /// — but they do decide which tick the next round starts on, so they need the same
+    /// treatment before a session can be replayed end to end.
+    /// </summary>
+    public void SimulateTick(float deltaTime)
+    {
+        if (state != GameState.Playing)
+            return;
+
+        if (activeFly == null && !isShowDown)
+        {
+            if (flySpawnDelay > 0f)
+            {
+                flySpawnDelay -= deltaTime;
+                if (flySpawnDelay <= 0f)
+                    activeFly = Instantiate(flyPrefab, Terrain.GetFlySpawnPoint(), Quaternion.identity);
+            }
+            else
+            {
+                flySpawnDelay = SimRng.Range(15f, 45f);
+            }
+        }
+
+        for (int i = 0; i < activePlayers.Count; i++)
+        {
+            if (activePlayers[i].character == null)
+            {
+                activePlayers[i].spawnDelay -= deltaTime;
+                if (activePlayers[i].spawnDelay < 0f)
+                {
+                    SpawnCharacter(activePlayers[i]);
+                }
+            }
+        }
+    }
+
     void Update()
     {
 
@@ -251,34 +312,8 @@ public class GameController : MonoBehaviour
         }
         else if (state == GameState.Playing)
         {
-            if (activeFly == null && !isShowDown)
-            {
-                if (flySpawnDelay > 0f)
-                {
-                    flySpawnDelay -= Time.deltaTime;
-                    if (flySpawnDelay <= 0f)
-                        activeFly = Instantiate(flyPrefab, Terrain.GetFlySpawnPoint(), Quaternion.identity);
-                }
-                else
-                {
-                    flySpawnDelay = Random.Range(15f, 45f);
-                }
-
-
-            }
-
-
             for (int i = 0; i < activePlayers.Count; i++)
             {
-                if (activePlayers[i].character == null)
-                {
-                    activePlayers[i].spawnDelay -= Time.deltaTime;
-                    if (activePlayers[i].spawnDelay < 0f)
-                    {
-                        SpawnCharacter(activePlayers[i]);
-                    }
-                }
-
                 if (activePlayers[i].character != null && activePlayers[i].character.transform.position.y > Terrain.ScreenTop)
                 {
 

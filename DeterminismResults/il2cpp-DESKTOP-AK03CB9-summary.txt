@@ -1,0 +1,7 @@
+machine=DESKTOP-AK03CB9
+os=Windows 10  (10.0.0) 64bit
+cpu=Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
+platform=WindowsPlayer
+backend=IL2CPP
+cases=29568
+checksum=8E510B1B

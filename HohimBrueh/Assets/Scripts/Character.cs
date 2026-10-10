@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using FreeLives;
+using FrogSmashers.Netcode;
 using System;
 
 public enum CharacterState
@@ -30,7 +31,7 @@ public enum TongueState
     HitFlyBurping
 }
 
-public class Character : MonoBehaviour
+public class Character : MonoBehaviour, ISimulated, ISimulationInput
 {
     [HideInInspector]
     public InputState input = new InputState();
@@ -251,6 +252,16 @@ public class Character : MonoBehaviour
         flyLayer = 1 << LayerMask.NameToLayer("Fly");
     }
 
+    void OnEnable()
+    {
+        SimulationDriver.Register(this);
+    }
+
+    void OnDisable()
+    {
+        SimulationDriver.Unregister(this);
+    }
+
     void CheckInput()
     {
         if (player == null)
@@ -268,6 +279,39 @@ public class Character : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Push a frame's worth of input in from outside, instead of reading the gamepad.
+    ///
+    /// Used when the rollback session is driving the simulation: it decides what the input
+    /// for a frame was (possibly a prediction, possibly a corrected value being replayed) and
+    /// this writes it in. Previous-frame flags are rolled forward here the same way
+    /// InputReader does, since edge detection like "was Y pressed last frame" reads them.
+    /// </summary>
+    public void ApplyInput(FrogInput frame)
+    {
+        input.wasAButton = input.aButton;
+        input.wasBButton = input.bButton;
+        input.wasXButton = input.xButton;
+        input.wasYButton = input.yButton;
+        input.wasLeft = input.left;
+        input.wasRight = input.right;
+        input.wasUp = input.up;
+        input.wasDown = input.down;
+        input.wasStart = input.start;
+
+        input.xAxis = frame.X;
+        input.yAxis = frame.Y;
+        input.aButton = frame.AButton;
+        input.bButton = frame.BButton;
+        input.xButton = frame.XButton;
+        input.yButton = frame.YButton;
+        input.start = frame.Start;
+        input.left = frame.Left;
+        input.right = frame.Right;
+        input.up = frame.Up;
+        input.down = frame.Down;
+    }
+
     public bool IsWinningPlayer()
     {
         if (GameController.isTeamMode)
@@ -282,19 +326,39 @@ public class Character : MonoBehaviour
         return false;
     }
 
-    // Update is called once per frame
-    void Update()
+    /// <summary>
+    /// Read this tick's input off the gamepad.
+    ///
+    /// This used to happen in Update() immediately before ticking, which conflated two things
+    /// that have to stay apart: a replayed tick must re-run the simulation *without* touching
+    /// the gamepad, because its inputs come from the session's history instead. The driver now
+    /// samples all inputs first and then advances everything, and a rollback skips the
+    /// sampling step entirely.
+    /// </summary>
+    public void SampleInput()
     {
         CheckInput();
+    }
 
+    /// <summary>
+    /// Advance this character by exactly one tick, using whatever is currently in
+    /// <see cref="input"/> and the timestep it's handed.
+    ///
+    /// Split out of Update() so the simulation can be driven by something other than Unity's
+    /// frame loop. Rollback needs to re-run past ticks on demand, with inputs it supplies and
+    /// a fixed timestep — none of which is possible while "advance one tick" and "read the
+    /// gamepad, once per rendered frame" are the same method.
+    /// </summary>
+    public void SimulateTick(float deltaTime)
+    {
         if (TimeBumpActive)
         {
-            timeBumpTimeLeft -= Time.deltaTime;
-            t = Time.deltaTime * timeBumpTimeScale;
+            timeBumpTimeLeft -= deltaTime;
+            t = deltaTime * timeBumpTimeScale;
         }
         else
         {
-            t = Time.deltaTime;
+            t = deltaTime;
         }
 
         if (state != CharacterState.Bouncing)
@@ -322,7 +386,7 @@ public class Character : MonoBehaviour
             if (input.down)
                 dir -= Vector2.up;
 
-            GetHit(dir, UnityEngine.Random.value, this);
+            GetHit(dir, SimRng.Value, this);
 
         }
 
@@ -477,6 +541,7 @@ public class Character : MonoBehaviour
                 if (attackDir.y < 0f)
                     radius = 1.75f;
                 hits = Physics2D.CircleCastAll((Vector2)transform.position + attackOffset, radius, attackDir, attackRange + rangeBonus, characterLayer);
+                SimQuery.SortBySlot(hits);
                 Debug.DrawLine(transform.position + (Vector3)attackOffset, transform.position + (Vector3)attackOffset + (Vector3)attackDir.normalized * (attackRange + rangeBonus + radius), Color.red, 1f);
 
                 if (hits.Length > 0)
@@ -948,6 +1013,7 @@ public class Character : MonoBehaviour
         if (GameController.charactersBounceEachOther && !GameController.isTeamMode && !hasBounceDodged && hitsTaken >= 1 && !OnGround)
         {
             var cols = Physics2D.OverlapCircleAll((Vector2)transform.position + Vector2.up * height * 0.5f, 0.5f, characterLayer);
+            SimQuery.SortBySlot(cols);
             {
                 if (cols.Length > 0)
                 {
@@ -1318,6 +1384,7 @@ public class Character : MonoBehaviour
                 {
                     bool hitTongue = false;
                     var cols = Physics2D.OverlapCircleAll((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, tongueLayer);
+                    SimQuery.SortBySlot(cols);
                     {
                         if (cols.Length > 0)
                         {
@@ -1336,6 +1403,7 @@ public class Character : MonoBehaviour
                     if (!hitTongue)
                     {
                         cols = Physics2D.OverlapCircleAll((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, characterLayer);
+                        SimQuery.SortBySlot(cols);
                         {
                             if (cols.Length > 0)
                             {

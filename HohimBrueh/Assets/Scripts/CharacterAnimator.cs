@@ -141,11 +141,16 @@ public class CharacterAnimator : MonoBehaviour
 
 
 
+    // The animator runs once per rendered frame, so it needs frame time, not the simulation's
+    // tick time. Before the fixed tick (SMA-19), character.t was Time.deltaTime and the two
+    // were the same. Now character.t is always 1/60, and reading it here made animations run
+    // faster or slower with the frame rate. Keep the character's own hit-stop scale, which
+    // is what character.t used to include.
     float t
     {
         get
         {
-            return character.t;
+            return Time.deltaTime * (character.TimeBumpActive ? character.timeBumpTimeScale : 1f);
         }
     }
 

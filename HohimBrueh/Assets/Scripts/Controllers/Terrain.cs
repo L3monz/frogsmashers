@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using FrogSmashers.Netcode;
 
 public class Terrain : MonoBehaviour
 {
@@ -60,7 +61,7 @@ public class Terrain : MonoBehaviour
         i = 0;
         foreach (var spawn in instance.spawnPoints)
         {
-            if (closestCharacterDistance[i] == furthestDistance && Random.value < 0.5f)
+            if (closestCharacterDistance[i] == furthestDistance && SimRng.Value < 0.5f)
             {
                 furthestIndex = i;
                 furthestDistance = closestCharacterDistance[i];
