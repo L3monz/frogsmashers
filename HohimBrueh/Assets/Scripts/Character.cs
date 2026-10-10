@@ -36,14 +36,14 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
     [HideInInspector]
     public InputState input = new InputState();
     [HideInInspector]
-    public Player player;
+    public Player player; // sim-state: exclude the Slot's Player, set once when the Character is created
     [HideInInspector]
     public Player lastHitByPlayer;
 
     public CharacterState state;
     public AttackState attackState;
 
-    public static bool isTeamMode;
+    public static bool isTeamMode; // sim-state: exclude Round Setup
 
     int facingDir = 1;
 
@@ -131,7 +131,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
 
     public bool TimeBumpActive { get { return timeBumpTimeLeft > 0f; } }
 
-    public float t { get; protected set; }
+    public float t { get; protected set; } // sim-state: exclude set at the start of each Tick from the timestep
 
     float skidRecoverTimeLeft;
     [HideInInspector]
@@ -227,7 +227,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
 
     float timeSinceHit;
 
-    int terrainLayer, characterLayer, groundLayer, tongueLayer, flyLayer;
+    int terrainLayer, characterLayer, groundLayer, tongueLayer, flyLayer; // sim-state: exclude set in Awake from layer names
 
     public bool RecoveringFromBounce
     {
@@ -310,6 +310,121 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
         input.right = frame.Right;
         input.up = frame.Up;
         input.down = frame.Down;
+    }
+
+    /// <summary>
+    /// Saves or loads this Character's Simulation State (spec D2, inventory in the spec).
+    /// The same method runs for both directions; see StateStream for the rules. Fields not
+    /// listed here are tuning values, or carry a "sim-state: exclude" comment.
+    /// </summary>
+    public void SyncState(StateStream s)
+    {
+        Vector3 position = transform.position;
+        s.Vector3("position", ref position);
+        if (s.IsReading)
+            transform.position = position;
+
+        // The previous-input flags decide what counts as a new press, so they are state too.
+        s.Float(nameof(input) + "." + nameof(input.xAxis), ref input.xAxis);
+        s.Float(nameof(input) + "." + nameof(input.yAxis), ref input.yAxis);
+        s.Float(nameof(input) + "." + nameof(input.leftTrigger), ref input.leftTrigger);
+        s.Float(nameof(input) + "." + nameof(input.rightTrigger), ref input.rightTrigger);
+        s.Bool(nameof(input) + "." + nameof(input.aButton), ref input.aButton);
+        s.Bool(nameof(input) + "." + nameof(input.bButton), ref input.bButton);
+        s.Bool(nameof(input) + "." + nameof(input.xButton), ref input.xButton);
+        s.Bool(nameof(input) + "." + nameof(input.yButton), ref input.yButton);
+        s.Bool(nameof(input) + "." + nameof(input.up), ref input.up);
+        s.Bool(nameof(input) + "." + nameof(input.down), ref input.down);
+        s.Bool(nameof(input) + "." + nameof(input.left), ref input.left);
+        s.Bool(nameof(input) + "." + nameof(input.right), ref input.right);
+        s.Bool(nameof(input) + "." + nameof(input.start), ref input.start);
+        s.Bool(nameof(input) + "." + nameof(input.wasAButton), ref input.wasAButton);
+        s.Bool(nameof(input) + "." + nameof(input.wasBButton), ref input.wasBButton);
+        s.Bool(nameof(input) + "." + nameof(input.wasXButton), ref input.wasXButton);
+        s.Bool(nameof(input) + "." + nameof(input.wasYButton), ref input.wasYButton);
+        s.Bool(nameof(input) + "." + nameof(input.wasUp), ref input.wasUp);
+        s.Bool(nameof(input) + "." + nameof(input.wasDown), ref input.wasDown);
+        s.Bool(nameof(input) + "." + nameof(input.wasLeft), ref input.wasLeft);
+        s.Bool(nameof(input) + "." + nameof(input.wasRight), ref input.wasRight);
+        s.Bool(nameof(input) + "." + nameof(input.wasStart), ref input.wasStart);
+
+        int hitBy = Player.SlotOf(lastHitByPlayer);
+        s.Slot(nameof(lastHitByPlayer), ref hitBy);
+        if (s.IsReading)
+            lastHitByPlayer = Player.BySlot(hitBy);
+
+        int stateValue = (int)state;
+        s.Int(nameof(state), ref stateValue);
+        if (s.IsReading)
+            state = (CharacterState)stateValue;
+
+        int attackStateValue = (int)attackState;
+        s.Int(nameof(attackState), ref attackStateValue);
+        if (s.IsReading)
+            attackState = (AttackState)attackStateValue;
+
+        s.Int(nameof(facingDir), ref facingDir);
+        s.Bool(nameof(canBounceDodge), ref canBounceDodge);
+        s.Bool(nameof(hasBounceDodged), ref hasBounceDodged);
+        s.Bool(nameof(canBounceTongue), ref canBounceTongue);
+        s.Bool(nameof(hasBounceTongued), ref hasBounceTongued);
+        s.Bool(nameof(hasReachedApex), ref hasReachedApex);
+        s.Bool(nameof(wasHitDownwards), ref wasHitDownwards);
+        s.Float(nameof(bounceGravityRestoreCounter), ref bounceGravityRestoreCounter);
+        s.Float(nameof(attackChargeCounter), ref attackChargeCounter);
+        s.Float(nameof(gravityGraceTimeLeft), ref gravityGraceTimeLeft);
+        s.Float(nameof(jumpGraceTimeLeft), ref jumpGraceTimeLeft);
+        s.Float(nameof(jumpCooldownLeft), ref jumpCooldownLeft);
+        s.Float(nameof(tongueDelayLeft), ref tongueDelayLeft);
+
+        Vector2 tongueDirValue = tongueDir;
+        s.Vector2(nameof(tongueDir), ref tongueDirValue);
+        float tongueDistanceValue = tongueDistance;
+        s.Float(nameof(tongueDistance), ref tongueDistanceValue);
+        int tongueStateValue = (int)tongueState;
+        s.Int(nameof(tongueState), ref tongueStateValue);
+        bool wasBouncingBeforeTongueValue = wasBouncingBeforeTongue;
+        s.Bool(nameof(wasBouncingBeforeTongue), ref wasBouncingBeforeTongueValue);
+        if (s.IsReading)
+        {
+            tongueDir = tongueDirValue;
+            tongueDistance = tongueDistanceValue;
+            tongueState = (TongueState)tongueStateValue;
+            wasBouncingBeforeTongue = wasBouncingBeforeTongueValue;
+        }
+
+        s.Float(nameof(timeBumpTimeLeft), ref timeBumpTimeLeft);
+        float timeBumpTimeScaleValue = timeBumpTimeScale;
+        s.Float(nameof(timeBumpTimeScale), ref timeBumpTimeScaleValue);
+        if (s.IsReading)
+            timeBumpTimeScale = timeBumpTimeScaleValue;
+
+        s.Float(nameof(skidRecoverTimeLeft), ref skidRecoverTimeLeft);
+        s.Vector2(nameof(velocity), ref velocity);
+        s.Vector2(nameof(velocityT), ref velocityT);
+        s.Int(nameof(hitsTaken), ref hitsTaken);
+        s.Float(nameof(timeSinceHit), ref timeSinceHit);
+        s.Bool(nameof(onGround), ref onGround);
+        s.Float(nameof(attackTimeLeft), ref attackTimeLeft);
+        s.Float(nameof(attackRecoverTimeLeft), ref attackRecoverTimeLeft);
+        s.Vector2(nameof(attackDir), ref attackDir);
+
+        bool wallSlidingValue = WallSliding;
+        s.Bool(nameof(WallSliding), ref wallSlidingValue);
+        int wallSlideSideValue = (int)WallSlideSide;
+        s.Int(nameof(WallSlideSide), ref wallSlideSideValue);
+        bool ingestedFlyValue = IngestedFly;
+        s.Bool(nameof(IngestedFly), ref ingestedFlyValue);
+        // There is at most one fly, so the reference is saved as a bool.
+        bool hasFly = ingestingFly != null;
+        s.Bool(nameof(ingestingFly), ref hasFly);
+        if (s.IsReading)
+        {
+            WallSliding = wallSlidingValue;
+            WallSlideSide = (EffectsController.Side)wallSlideSideValue;
+            IngestedFly = ingestedFlyValue;
+            ingestingFly = hasFly ? Fly.Active : null;
+        }
     }
 
     public bool IsWinningPlayer()

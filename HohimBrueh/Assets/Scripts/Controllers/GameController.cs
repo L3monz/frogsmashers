@@ -16,14 +16,14 @@ public enum GameState
 
 public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 {
-    public static bool charactersBounceEachOther = false;
-    public static bool weirdBounceTrajectories = false;
-    public static bool onlyBounceBeforeRecover = true;
+    public static bool charactersBounceEachOther = false; // sim-state: exclude Round Setup (option toggle)
+    public static bool weirdBounceTrajectories = false; // sim-state: exclude Round Setup (option toggle)
+    public static bool onlyBounceBeforeRecover = true; // sim-state: exclude Round Setup (option toggle)
     public static bool allowTeamMode = true;
 
-    public static List<Player> activePlayers = new List<Player>();
+    public static List<Player> activePlayers = new List<Player>(); // sim-state: exclude the roster; FrogSimulation syncs membership by Slot (P6)
 
-    static List<Player> inactivePlayers;
+    static List<Player> inactivePlayers; // sim-state: exclude the roster; FrogSimulation syncs membership by Slot (P6)
 
     GameState state;
 
@@ -33,7 +33,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
     public Character characterPrefab;
 
-    public Fly flyPrefab, activeFly;
+    public Fly flyPrefab, activeFly; // sim-state: exclude activeFly is replaced by the fly pool in P3 (spec D5); flyPrefab is config
 
     float flySpawnDelay;
 
@@ -41,34 +41,34 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
     public Canvas scoreCanvas;
 
-    public List<PlayerScoreDisplay> playerScoreDisplays;
+    public List<PlayerScoreDisplay> playerScoreDisplays; // sim-state: exclude view
 
     public PlayerScoreDisplay scoreDisplayPrefab;
 
-    static GameController instance;
+    static GameController instance; // sim-state: exclude singleton reference
 
-    public Color[] playerColors;
+    public Color[] playerColors; // sim-state: exclude Round Setup (colours by Slot)
 
-    List<Color> availableColors;
+    List<Color> availableColors; // sim-state: exclude join screen, before the Round
 
     public bool isJoinScreen;
 
-    public static string[] levelNames = new string[] { "1BusStop", "2DownSmash", "3Moon", "4FinalFrogstination", "5Skyline", "6Finale" };
+    public static string[] levelNames = new string[] { "1BusStop", "2DownSmash", "3Moon", "4FinalFrogstination", "5Skyline", "6Finale" }; // sim-state: exclude Round Setup (the Level list)
     //public static string[] levelNames = new string[] {  "2DownSmash" };
-    public JoinCanvas[] joinCanvas;
+    public JoinCanvas[] joinCanvas; // sim-state: exclude join screen view
 
     float finishDelay = 7.5f;
 
-    public Text joinCountdownText, joinGameModeText;
+    public Text joinCountdownText, joinGameModeText; // sim-state: exclude view
 
-    public static bool isTeamMode;
+    public static bool isTeamMode; // sim-state: exclude Round Setup
 
-    public static bool playersCanDropIn;
+    public static bool playersCanDropIn; // sim-state: exclude Round Setup
 
-    public static bool isShowDown;
+    public static bool isShowDown; // sim-state: exclude Round Setup
 
     int redTeamScore, blueTeamScore;
-    PlayerScoreDisplay redTeamScoreDisplay, blueTeamScoreDisplay;
+    PlayerScoreDisplay redTeamScoreDisplay, blueTeamScoreDisplay; // sim-state: exclude view
 
     void Awake()
     {
@@ -211,7 +211,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         Camera.main.orthographicSize = adust * 18f;
     }
 
-    FreeLives.InputState input = new InputState();
+    FreeLives.InputState input = new InputState(); // sim-state: exclude input read for joins, not state (P5 replaces it with Slot input)
     FreeLives.InputState combinedInput = new InputState();
 
     void OnEnable()
@@ -303,8 +303,32 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
     // Set once FinishRound has started the scene change. See SimulateTick.
     bool roundEnding;
 
+    /// <summary>
+    /// Saves or loads the Round's Simulation State (spec D2). Players, the roster, the
+    /// Characters and the fly are synced by their own SyncState methods; FrogSimulation
+    /// puts all the sections together in a fixed order (P6).
+    /// </summary>
+    public void SyncState(StateStream s)
+    {
+        int stateValue = (int)state;
+        s.Int(nameof(state), ref stateValue);
+        if (s.IsReading)
+            state = (GameState)stateValue;
+
+        s.Float(nameof(flySpawnDelay), ref flySpawnDelay);
+        s.Float(nameof(finishDelay), ref finishDelay);
+        s.Int(nameof(redTeamScore), ref redTeamScore);
+        s.Int(nameof(blueTeamScore), ref blueTeamScore);
+        s.Bool(nameof(roundEnding), ref roundEnding);
+
+        int winner = Player.SlotOf(winningPlayer);
+        s.Slot(nameof(winningPlayer), ref winner);
+        if (s.IsReading)
+            winningPlayer = Player.BySlot(winner);
+    }
+
     // Players who pressed join this tick. Filled by SampleInput, applied by SimulateTick.
-    readonly List<Player> pendingJoins = new List<Player>();
+    readonly List<Player> pendingJoins = new List<Player>(); // sim-state: exclude this Tick's joins, refilled from input every Tick (P5 removes it)
 
     /// <summary>
     /// Reads the join button of every player who is not in the match yet.
@@ -530,7 +554,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         }
     }
 
-    public static int levelNo;
+    public static int levelNo; // sim-state: exclude Match total, changed between Rounds
     void FinishRound()
     {
         if (state == GameState.JoinScreen)
@@ -597,7 +621,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
     Player winningPlayer;
 
-    public static Player lastWinningPlayer { get; private set; }
+    public static Player lastWinningPlayer { get; private set; } // sim-state: exclude Match result for the score screen (D9 moves it to FinishRound)
     public static bool HasInstance { get { return instance != null; } }
 
     public static Player GetWinningPlayer()
@@ -771,7 +795,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         return null;
     }
 
-    bool showGui;
+    bool showGui; // sim-state: exclude view
 
     public void OnGUI()
     {

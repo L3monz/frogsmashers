@@ -15,6 +15,14 @@ namespace FrogSmashers.Netcode
         /// rather than read from the clock so the method stays a pure function of its
         /// arguments, which is what makes it testable outside a running game.</param>
         void SimulateTick(float deltaTime);
+
+        /// <summary>
+        /// Saves or loads this object's Simulation State through <paramref name="s"/>
+        /// (spec D2, ADR 0003). One method for both directions, so the two cannot drift
+        /// apart. See <see cref="StateStream"/> for the rules; tools/state-coverage.py checks
+        /// that no assigned field is missing.
+        /// </summary>
+        void SyncState(StateStream s);
     }
 
     /// <summary>

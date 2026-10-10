@@ -65,3 +65,6 @@ crashlytics-build.properties
 # or the full per-case log dump. Summary checksums are small and worth keeping.
 /builds/
 DeterminismResults/*-log.txt
+
+# Python bytecode from the tools/ scripts.
+tools/__pycache__/

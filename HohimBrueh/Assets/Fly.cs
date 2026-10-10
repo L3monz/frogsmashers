@@ -6,9 +6,16 @@ using UnityEngine;
 
 public class Fly : MonoBehaviour, ISimulated
 {
+    /// <summary>
+    /// The fly in play, if any. There is at most one, so a Character's reference to the fly
+    /// it is eating is saved as a bool and resolved through this. P3 replaces it with the
+    /// fly pool (spec D5).
+    /// </summary>
+    public static Fly Active { get; private set; } // sim-state: exclude lookup, set in Awake and OnDestroy
+
     Vector2 velocity, targetVelocity;
-    int terrainLayer;
-    public SpriteRenderer sprite;
+    int terrainLayer; // sim-state: exclude set in Awake from the layer name
+    public SpriteRenderer sprite; // sim-state: exclude view reference (its flip is set every Tick from velocity)
 
     public float maxSpeed;
     internal bool BeingIngested;
@@ -28,8 +35,37 @@ public class Fly : MonoBehaviour, ISimulated
     // simulate with no terrain layer and no velocity.
     void Awake()
     {
+        Active = this;
         terrainLayer = 1 << LayerMask.NameToLayer("Ground");
         velocity = SimRng.Direction() * 10f;
+    }
+
+    void OnDestroy()
+    {
+        if (Active == this)
+            Active = null;
+    }
+
+    public void SyncState(StateStream s)
+    {
+        Vector3 position = transform.position;
+        s.Vector3("position", ref position);
+        if (s.IsReading)
+            transform.position = position;
+
+        s.Vector2(nameof(velocity), ref velocity);
+        s.Vector2(nameof(targetVelocity), ref targetVelocity);
+        s.Bool(nameof(BeingIngested), ref BeingIngested);
+        s.Float(nameof(ingestTimeout), ref ingestTimeout);
+        s.Float(nameof(updateDirectionDelay), ref updateDirectionDelay);
+
+        int eater = ingestedBy != null ? Player.SlotOf(ingestedBy.player) : -1;
+        s.Slot(nameof(ingestedBy), ref eater);
+        if (s.IsReading)
+        {
+            var player = Player.BySlot(eater);
+            ingestedBy = player != null ? player.character : null;
+        }
     }
 
     void OnEnable()

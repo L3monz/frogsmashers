@@ -58,3 +58,7 @@ echo "compile clean"
 # Determinism guard (SMA-18): simulation code must not read the clock, draw unsynced random
 # numbers, call transcendental functions, or read devices directly. See tools/sim-guard.py.
 python3 "$PROJECT_ROOT/tools/sim-guard.py"
+
+# State coverage (spec D20): every field a simulated class assigns must be in its SyncState
+# or excluded with a reason. See tools/state-coverage.py.
+python3 "$PROJECT_ROOT/tools/state-coverage.py"

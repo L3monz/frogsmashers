@@ -24,12 +24,16 @@ Scripts/Controllers/GameController.cs
 # Spawn points and kill bounds.
 Scripts/Controllers/Terrain.cs
 
+# A Player's score and respawn delay are Simulation State.
+Scripts/Player.cs
+
 # The simulation's own infrastructure.
 Scripts/Netcode/FrogInput.cs
 Scripts/Netcode/ISimulated.cs
 Scripts/Netcode/SimClock.cs
 Scripts/Netcode/SimQuery.cs
 Scripts/Netcode/SimRng.cs
+Scripts/Netcode/StateStream.cs
 
 # The driver is the boundary: the one place that may read the wall clock, and only to
 # decide how many ticks to run. Listed so that each clock read needs an explicit allow.
