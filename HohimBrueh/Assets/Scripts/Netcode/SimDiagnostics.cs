@@ -52,9 +52,10 @@ namespace FrogSmashers.Netcode
 
         private int capIndex;
         private float secondTimer;
-        private float simTimeThisSecond;
+        private double timeReceivedAtLastReport;
+        private double timeDroppedAtLastReport;
+        private long ticksAtLastReport;
         private int framesThisSecond;
-        private int ticksThisSecond;
         private int dropsAtLastReport;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -121,19 +122,28 @@ namespace FrogSmashers.Netcode
 
             framesThisSecond++;
             secondTimer += Time.unscaledDeltaTime;
-
-            // Time.deltaTime is what the driver accumulates. It is capped per frame by
-            // Time.maximumDeltaTime and scaled by Time.timeScale, so after a stall it is less
-            // than the wall-clock time. The driver must run exactly this much time as ticks.
-            simTimeThisSecond += Time.deltaTime;
             if (secondTimer >= 1f)
             {
                 int drops = SimulationDriver.BacklogDrops - dropsAtLastReport;
                 dropsAtLastReport = SimulationDriver.BacklogDrops;
 
+                // Read the driver's own totals rather than summing Time.deltaTime here.
+                // This Update and the driver's run in no fixed order, so separate sums
+                // can put one frame's time and its ticks in different seconds. The
+                // driver's totals change together, so the difference is always consistent.
+                // "sim" is the frame time the driver received and kept (after a stall,
+                // Unity caps one frame at Time.maximumDeltaTime, so it is less than "wall").
+                double received = SimulationDriver.TotalTimeReceived - timeReceivedAtLastReport;
+                double dropped = SimulationDriver.TotalTimeDropped - timeDroppedAtLastReport;
+                long ticks = SimulationDriver.TotalTicksRun - ticksAtLastReport;
+                timeReceivedAtLastReport = SimulationDriver.TotalTimeReceived;
+                timeDroppedAtLastReport = SimulationDriver.TotalTimeDropped;
+                ticksAtLastReport = SimulationDriver.TotalTicksRun;
+                double simTimeThisSecond = received - dropped;
+
                 Log(string.Format(CultureInfo.InvariantCulture,
                     "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000}",
-                    framesThisSecond / secondTimer, ticksThisSecond, SimClock.Tick, drops,
+                    framesThisSecond / secondTimer, ticks, SimClock.Tick, drops,
                     CapLabel(), Time.timeScale, secondTimer, simTimeThisSecond));
 
                 foreach (var player in GameController.activePlayers)
@@ -152,9 +162,7 @@ namespace FrogSmashers.Netcode
                 }
 
                 secondTimer = 0f;
-                simTimeThisSecond = 0f;
                 framesThisSecond = 0;
-                ticksThisSecond = 0;
             }
         }
 
@@ -176,8 +184,6 @@ namespace FrogSmashers.Netcode
 
         private void OnTick()
         {
-            ticksThisSecond++;
-
             foreach (var player in GameController.activePlayers)
             {
                 var character = player.character;

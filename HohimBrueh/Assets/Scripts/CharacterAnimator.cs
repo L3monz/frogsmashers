@@ -157,6 +157,14 @@ public class CharacterAnimator : MonoBehaviour
 
     void Start()
     {
+        // The prefab has the tongue line and tip visible, and LateUpdate only hides them
+        // when the animation state changes. A frog that spawned on the ground stayed Idle,
+        // so its tongue stuck out until it moved. Before the fixed tick, a new frog's first
+        // animation frame ran before it landed, so it started as Jumping and the change
+        // hid the tongue. Now it simulates in its spawn tick and is already on the ground.
+        tongueLine.enabled = false;
+        tongueTip.gameObject.SetActive(false);
+
         if (character.player != null)
         {
             //rend.color = Color.Lerp(character.player.color, Color.white, 0.5f);

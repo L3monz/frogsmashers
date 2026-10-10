@@ -52,6 +52,17 @@ namespace FrogSmashers.Netcode
         public static int BacklogDrops { get; private set; }
 
         /// <summary>
+        /// Running totals for diagnostics: all frame time the driver received, the part it
+        /// discarded as backlog, and the ticks it ran. They are updated together in one
+        /// frame, so a reader always sees a consistent set. The rule they must keep:
+        /// ticks run = (time received - time dropped) / FixedDeltaTime, less a fraction of
+        /// one tick still waiting in the accumulator.
+        /// </summary>
+        public static double TotalTimeReceived { get; private set; }
+        public static double TotalTimeDropped { get; private set; }
+        public static long TotalTicksRun { get; private set; }
+
+        /// <summary>
         /// Creates the driver before any scene loads, so it is already there when the first
         /// character's OnEnable tries to register.
         ///
@@ -131,7 +142,9 @@ namespace FrogSmashers.Netcode
         private void Update()
         {
             // sim-guard: allow the driver reads frame time only to decide how many ticks to run
-            accumulator += Time.deltaTime;
+            float frameTime = Time.deltaTime;
+            accumulator += frameTime;
+            TotalTimeReceived += frameTime;
 
             int ticksRun = 0;
             while (accumulator >= SimClock.FixedDeltaTime && ticksRun < MaxTicksPerFrame)
@@ -143,6 +156,7 @@ namespace FrogSmashers.Netcode
 
             if (ticksRun == MaxTicksPerFrame && accumulator >= SimClock.FixedDeltaTime)
             {
+                TotalTimeDropped += accumulator;
                 accumulator = 0f;
                 BacklogDrops++;
             }
@@ -181,6 +195,7 @@ namespace FrogSmashers.Netcode
             }
 
             SimClock.Advance();
+            TotalTicksRun++;
 
             if (TickCompleted != null)
                 TickCompleted();
