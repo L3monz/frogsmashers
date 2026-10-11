@@ -92,7 +92,6 @@ GameObject:
   - component: {fileID: 4365750695354144}
   - component: {fileID: 212150865361984586}
   - component: {fileID: 114101597350802170}
-  - component: {fileID: 58691973446783614}
   m_Layer: 11
   m_Name: TongueTip
   m_TagString: Untagged
@@ -173,20 +172,6 @@ Transform:
   m_Father: {fileID: 4554776352365320}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!58 &58691973446783614
-CircleCollider2D:
-  m_ObjectHideFlags: 1
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 100100000}
-  m_GameObject: {fileID: 1513645336574962}
-  m_Enabled: 1
-  m_Density: 1
-  m_Material: {fileID: 0}
-  m_IsTrigger: 0
-  m_UsedByEffector: 0
-  m_Offset: {x: 0, y: 0}
-  serializedVersion: 2
-  m_Radius: 0.5
 --- !u!61 &61092716579564996
 BoxCollider2D:
   m_ObjectHideFlags: 1

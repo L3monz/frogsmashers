@@ -227,7 +227,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
 
     float timeSinceHit;
 
-    int terrainLayer, characterLayer, groundLayer, tongueLayer, flyLayer; // sim-state: exclude set in Awake from layer names
+    int terrainLayer, characterLayer, groundLayer, flyLayer; // sim-state: exclude set in Awake from layer names
 
     public bool RecoveringFromBounce
     {
@@ -253,7 +253,6 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
         terrainLayer = 1 << LayerMask.NameToLayer("Ground");
         groundLayer = terrainLayer | (1 << LayerMask.NameToLayer("OneWayPlatform"));
         characterLayer = 1 << LayerMask.NameToLayer("Character");
-        tongueLayer = 1 << LayerMask.NameToLayer("Tongue");
         flyLayer = 1 << LayerMask.NameToLayer("Fly");
     }
 
@@ -1502,27 +1501,27 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
             {
                 if (tongueDistance > minimumTongueDistance)
                 {
+                    // Tongue clash, computed from Simulation State (spec D12). It used to query
+                    // the Tongue layer, whose only collider is the TongueTip that
+                    // CharacterAnimator moves and switches once per Render Frame: view state
+                    // that lagged the Tick and that a Rollback could not restore.
                     bool hitTongue = false;
-                    var cols = Physics2D.OverlapCircleAll((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, tongueLayer);
-                    SimQuery.SortBySlot(cols);
+                    var characters = SimWorld.Characters;
+                    for (int slot = 0; slot < characters.Count; slot++)
                     {
-                        if (cols.Length > 0)
+                        if (!characters.IsAlive(slot))
+                            continue;
+                        var chr = characters.Get(slot);
+                        if (chr != this && chr.TongueIsOut && (chr.TongueTipPos - TongueTipPos).sqrMagnitude < TongueClashDistance * TongueClashDistance)
                         {
-                            foreach (var col in cols)
-                            {
-                                var chr = col.GetComponentInParent<Character>();
-                                if (chr != null && chr != this)
-                                {
-                                    tongueState = TongueState.RetractingHitEnemyTongue;
-                                    EffectsController.CreateTongueHitEffect(TongueTipPos, 0.2f);
-                                    hitTongue = true;
-                                }
-                            }
+                            tongueState = TongueState.RetractingHitEnemyTongue;
+                            EffectsController.CreateTongueHitEffect(TongueTipPos, 0.2f);
+                            hitTongue = true;
                         }
                     }
                     if (!hitTongue)
                     {
-                        cols = Physics2D.OverlapCircleAll((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, characterLayer);
+                        var cols = Physics2D.OverlapCircleAll((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, characterLayer);
                         SimQuery.SortBySlot(cols);
                         {
                             if (cols.Length > 0)
@@ -1646,6 +1645,24 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
             return (Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance;
         }
 
+    }
+
+    // The old clash query used radius 1 against the tip collider's radius 0.5 (spec D12).
+    const float TongueClashDistance = 1.5f;
+
+    /// <summary>
+    /// True when this Character's tongue can clash with another tongue: the same states in
+    /// which CharacterAnimator showed the tip collider. A stunned tongue is hidden, and a
+    /// burping one is in the mouth (the old collider kept a stale position then; spec D12).
+    /// </summary>
+    bool TongueIsOut
+    {
+        get
+        {
+            return state == CharacterState.Tounge
+                && tongueState != TongueState.HitEnemyTongueStunned
+                && tongueState != TongueState.HitFlyBurping;
+        }
     }
 
     void StartTongueAttack()
