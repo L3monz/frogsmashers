@@ -28,7 +28,9 @@ BUILD="$PROJECT_ROOT/builds/release"
 rm -rf "$BUILD"
 "$PROJECT_ROOT/tools/build.sh" release
 
-[ -f "$BUILD/LICENSE.md" ] || { echo "LICENSE.md is missing from the build; refusing to publish."; exit 1; }
+for notice in LICENSE.md THIRD-PARTY-NOTICES.md; do
+  [ -f "$BUILD/$notice" ] || { echo "$notice is missing from the build; refusing to publish."; exit 1; }
+done
 
 # IL2CPP writes debug symbols to *_BackUpThisFolder_ButDontShipItWithYourGame next to the
 # exe. As the name says, they stay out of what players download.

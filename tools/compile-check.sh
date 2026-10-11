@@ -26,7 +26,12 @@ RSP="$OUT/compile.rsp"
 {
   echo "-target:library"
   # The defines of a Windows player build, so code inside #if UNITY_STANDALONE_WIN is checked too.
-  echo "-define:UNITY_STANDALONE_WIN;UNITY_STANDALONE"
+  echo "-define:UNITY_STANDALONE_WIN;UNITY_STANDALONE;SIMULATE_NETWORK"
+  # LiteNetLib's socket code is unsafe; Unity allows it in that plugin's own assembly only
+  # (its asmdef), but this check compiles everything together.
+  echo "-unsafe"
+  # Unity 2019.2 compiles C# 7.3; Roslyn's default here is 7.0.
+  echo "-langversion:7.3"
   echo "-out:\"$(wslpath -w "$OUT/GameCheck.dll")\""
   # Warnings the existing codebase already trips; we only care about errors here.
   echo "-nowarn:0169,0414,0649,0108,0219,0618,0162,0067,0429"
@@ -35,6 +40,7 @@ RSP="$OUT/compile.rsp"
   # Unity references these by default too (Stopwatch, LINQ and others live there).
   echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/System.dll")\""
   echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/System.Core.dll")\""
+  echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/System.Runtime.Serialization.dll")\""
   for dll in "$UNITY/Managed/UnityEngine/"UnityEngine*.dll; do
     echo "-r:\"$(wslpath -w "$dll")\""
   done

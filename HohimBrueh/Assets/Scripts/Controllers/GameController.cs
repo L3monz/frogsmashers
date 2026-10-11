@@ -98,8 +98,10 @@ public class GameController : MonoBehaviour, ISimulated
         if (inactivePlayers == null)
         {
             CreatePlayers(playerColors);
+            TakeOnlineRoster();
         }
-        else
+
+        if (activePlayers.Count > 0)
         {
             int i = 0;
             if (isTeamMode)
@@ -248,6 +250,39 @@ public class GameController : MonoBehaviour, ISimulated
         }
     }
 
+    // The roster of an Online Match, waiting for the first Round's scene: that scene's
+    // GameController creates the Players (with its colours) and then puts these Slots in.
+    static int[] pendingOnlineRoster; // sim-state: exclude Round Setup, applied before Tick 0
+
+    /// <summary>
+    /// The fixed Round Setup of an Online Match, before its first Level loads: free-for-all,
+    /// no drop-in joins, no Showdown yet, and the given Slots in the roster with their default
+    /// colours. Both Peers call this with the same Slots, so both start the same Round.
+    /// </summary>
+    public static void PrepareOnlineMatch(int[] slots)
+    {
+        isTeamMode = false;
+        playersCanDropIn = false;
+        isShowDown = false;
+        levelNo = 0;
+        activePlayers.Clear();
+        inactivePlayers = null;
+        pendingOnlineRoster = slots;
+    }
+
+    static void TakeOnlineRoster()
+    {
+        if (pendingOnlineRoster == null || instance == null || instance.isJoinScreen)
+            return;
+        foreach (int slot in pendingOnlineRoster)
+        {
+            var player = Player.BySlot(slot);
+            activePlayers.Add(player);
+            inactivePlayers.Remove(player);
+        }
+        pendingOnlineRoster = null;
+    }
+
     internal static void SetupPlayersForShowdown()
     {
         List<Player> winningPlayers = GetLeadingPlayers();
@@ -368,6 +403,8 @@ public class GameController : MonoBehaviour, ISimulated
                 // The simulation never changes scene: a scene load cannot be rolled back. It
                 // only records that the Round is over; the driver changes scene after the Tick
                 // (FinishRoundAfterSimulation).
+                if (!roundOver)
+                    roundOverTick = SimClock.Tick;
                 roundOver = true;
             }
         }
@@ -375,6 +412,17 @@ public class GameController : MonoBehaviour, ISimulated
 
     // Set when the Round's end delay runs out. See SimulateTick.
     bool roundOver;
+
+    // The Tick that set roundOver. Online, a Peer may end the Round only once this Tick's
+    // inputs are confirmed: from then on both Peers agree the Round ended, even if one has run
+    // a few predicted Ticks further.
+    int roundOverTick;
+
+    /// <summary>The Tick on which <see cref="RoundOver"/> became true.</summary>
+    public int RoundOverTick
+    {
+        get { return roundOverTick; }
+    }
 
     /// <summary>True once the Round's end delay has run out.</summary>
     public bool RoundOver
@@ -399,6 +447,7 @@ public class GameController : MonoBehaviour, ISimulated
         s.Int(nameof(redTeamScore), ref redTeamScore);
         s.Int(nameof(blueTeamScore), ref blueTeamScore);
         s.Bool(nameof(roundOver), ref roundOver);
+        s.Int(nameof(roundOverTick), ref roundOverTick);
 
         int winner = Player.SlotOf(winningPlayer);
         s.Slot(nameof(winningPlayer), ref winner);
@@ -523,7 +572,10 @@ public class GameController : MonoBehaviour, ISimulated
             // sim-guard: allow leaves the match for the title screen; not simulation
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScreen");
+                if (FrogSmashers.Online.OnlineMatch.IsActive)
+                    FrogSmashers.Online.OnlineMatch.End("You left the Match.");
+                else
+                    UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScreen");
             }
         }
         else if (state == GameState.RoundFinished)

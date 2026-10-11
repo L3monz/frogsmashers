@@ -24,6 +24,17 @@ Work is tracked in Linear (project "FrogSmashers: Rollback Netcode").
 - **.NET SDK** on Windows, for `tools/update-hindsight.sh`.
 - **butler** (itch.io's upload tool), only to publish releases: see below.
 
+**Patch Unity's IL2CPP sockets once** (needed for online play). With Windows 10 SDK
+10.0.19041 or newer installed, Unity 2019.2's IL2CPP builds fail to open any network socket
+(`ArgumentException ... Socket.SocketDefaults`). In PowerShell **as Administrator**:
+
+```
+powershell -ExecutionPolicy Bypass -File tools\patch-il2cpp-sockets.ps1
+```
+
+Then delete `HohimBrueh\Library\il2cpp_cache*` so the next build recompiles IL2CPP. The script
+explains the cause and keeps a backup of the file it changes.
+
 Open `HohimBrueh/` in Unity Hub once before using the scripts; they need its `Library/` folder.
 
 **Run the scripts in `tools/` from a WSL terminal** (type `wsl` in PowerShell, then
@@ -61,6 +72,12 @@ had uncommitted changes. It shows small on the title screen and in `Player.log`.
 two different builds refuse to connect, because they might simulate differently, so both
 players must run the identical build. `LICENSE.md` is copied next to the exe, as the license
 requires.
+
+Release builds run one copy at a time (starting the game again brings the running one to the
+front). Development builds allow several copies, so two instances on one PC can play each other
+online; start them windowed (`-screen-fullscreen 0`) or press Alt+Enter to switch to a window.
+Both keep running when they lose focus: an online game that paused would stop sending inputs and
+drop the Match.
 
 The first build takes several minutes; later ones about a minute and a half. Logs:
 `HohimBrueh/Logs/build-dev.log` and `build-release.log`.

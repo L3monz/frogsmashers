@@ -15,7 +15,9 @@ public static class BuildScript
     // repository root, which is gitignored.
     private const string DevPath = "../builds/dev/FrogSmashers.exe";
     private const string ReleasePath = "../builds/release/FrogSmashers.exe";
-    private const string LicenseSource = "../LICENSE.md";
+    // Copied next to the exe in every build: the Frog Smashers license requires its notice in
+    // every binary distribution, and LiteNetLib's MIT license requires its notice in every copy.
+    private static readonly string[] Notices = { "../LICENSE.md", "../THIRD-PARTY-NOTICES.md" };
     private const string BuildIdAsset = "Assets/Resources/" + FrogSmashers.BuildInfo.ResourceName + ".txt";
 
     /// <summary>
@@ -25,21 +27,29 @@ public static class BuildScript
     /// </summary>
     public static void BuildDevelopmentWindows()
     {
-        Build(DevPath, BuildOptions.Development);
+        // Several copies may run at once, so two instances on one PC can play each other.
+        Build(DevPath, BuildOptions.Development, singleInstance: false);
     }
 
-    /// <summary>The build players get: no development features, the same IL2CPP backend.</summary>
+    /// <summary>
+    /// The build players get: no development features, the same IL2CPP backend, and one copy
+    /// at a time (starting it again brings the running game to the front).
+    /// </summary>
     public static void BuildReleaseWindows()
     {
-        Build(ReleasePath, BuildOptions.None);
+        Build(ReleasePath, BuildOptions.None, singleInstance: true);
     }
 
-    private static void Build(string path, BuildOptions buildOptions)
+    private static void Build(string path, BuildOptions buildOptions, bool singleInstance)
     {
         string buildId = ArgumentAfter("-buildId") ?? "unknown";
         bool succeeded = false;
+        bool savedSingleInstance = PlayerSettings.forceSingleInstance;
         try
         {
+            // Set for this build only and restored afterwards, so ProjectSettings doesn't change.
+            PlayerSettings.forceSingleInstance = singleInstance;
+
             // Written for this build only and removed afterwards, so the editor keeps reporting
             // "editor" and the file never gets committed.
             File.WriteAllText(BuildIdAsset, buildId);
@@ -57,9 +67,11 @@ public static class BuildScript
             BuildSummary summary = report.summary;
             succeeded = summary.result == BuildResult.Succeeded;
 
-            // The license must travel with every binary distribution, unchanged.
             if (succeeded)
-                File.Copy(LicenseSource, Path.Combine(Path.GetDirectoryName(path), "LICENSE.md"), overwrite: true);
+            {
+                foreach (string notice in Notices)
+                    File.Copy(notice, Path.Combine(Path.GetDirectoryName(path), Path.GetFileName(notice)), overwrite: true);
+            }
 
             Debug.Log("[BUILD] result=" + summary.result + " id=" + buildId + " errors=" + summary.totalErrors
                 + " seconds=" + summary.totalTime.TotalSeconds.ToString("0") + " size=" + (summary.totalSize / (1024 * 1024)) + "MB");
@@ -67,6 +79,7 @@ public static class BuildScript
         finally
         {
             AssetDatabase.DeleteAsset(BuildIdAsset);
+            PlayerSettings.forceSingleInstance = savedSingleInstance;
         }
         EditorApplication.Exit(succeeded ? 0 : 1);
     }

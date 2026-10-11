@@ -48,6 +48,12 @@ namespace FrogSmashers.Netcode
             get { return round.RoundOver; }
         }
 
+        /// <summary>The Tick that ended the Round. Meaningful once <see cref="RoundOver"/> is true.</summary>
+        public int RoundOverTick
+        {
+            get { return round.RoundOverTick; }
+        }
+
         /// <summary>
         /// Bytes allocated while saving and loading Saved States, for diagnostics. Measured as
         /// growth of the managed heap; a collection in between makes it read low, never high.

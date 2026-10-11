@@ -20,12 +20,15 @@ namespace FrogSmashers.Netcode
     /// - <see cref="Mode.SyncTest"/>: through Hindsight's SyncTestSession, which every 8 Ticks
     ///   rolls back 8 Ticks and runs them again, and compares checksums. A Desync is reported
     ///   field by field, and the Round continues in Direct mode.
+    /// - <see cref="Mode.Online"/>: through Hindsight's PeerToPeerSession, against the other
+    ///   Peer of an Online Match. Each Tick: poll, add this machine's input, advance. A Tick is
+    ///   skipped when the session refuses the input (the prediction limit) or recommends a wait.
     /// The mode is chosen when a Round starts. The join screen always runs Direct: it is a
     /// lobby before the Round, not part of it.
     /// </summary>
     public class SimulationDriver : MonoBehaviour
     {
-        public enum Mode { Direct, SyncTest }
+        public enum Mode { Direct, SyncTest, Online }
 
         /// <summary>
         /// Cap on Ticks per rendered frame. After a hitch (a shader compile, the editor
@@ -49,6 +52,24 @@ namespace FrogSmashers.Netcode
 
         // This Tick's input for all six Slots, reused every Tick.
         private readonly FrogInput[] tickInputs = new FrogInput[6];
+
+        // Online play. The session of the current Round, and the one of the Round that just
+        // ended, which keeps answering for a moment so the other Peer receives our last inputs
+        // (without them it can't confirm the end of the Round, and would time out).
+        private const float DrainSeconds = 2f;
+        private PeerToPeerSession<FrogInput> online;
+        private PeerToPeerSession<FrogInput> draining;
+        private float drainUntil;
+        private int waitTicks;
+        private int onlineRollbacksSeen;
+        private int onlineRolledBackTicksSeen;
+        private float nextOnlineStats;
+        private static readonly FrogSmashers.Online.FrogInputCodec Codec = new FrogSmashers.Online.FrogInputCodec();
+        private static readonly IClock Clock = new StopwatchClock();
+
+        /// <summary>Online Ticks skipped: refused at the prediction limit, or waited for the other Peer.</summary>
+        public static long TotalOnlineRefusedTicks { get; private set; }
+        public static long TotalOnlineWaitedTicks { get; private set; }
 
         // sim-guard: allow measures how long a Tick takes, for diagnostics; never affects the simulation
         private readonly System.Diagnostics.Stopwatch tickTimer = new System.Diagnostics.Stopwatch();
@@ -81,7 +102,12 @@ namespace FrogSmashers.Netcode
         /// </summary>
         public static bool InRollback
         {
-            get { return instance != null && instance.session != null && instance.session.InRollback; }
+            get
+            {
+                return instance != null
+                    && ((instance.session != null && instance.session.InRollback)
+                        || (instance.online != null && instance.online.InRollback));
+            }
         }
 
         /// <summary>True while a Sync Test session drives the Round.</summary>
@@ -166,16 +192,32 @@ namespace FrogSmashers.Netcode
             instance.roundEnded = false;
             instance.accumulator = 0f;
 
+            bool online = isRound && FrogSmashers.Online.OnlineMatch.IsActive && !ReplayCheck.IsReplaying;
+
             // Offline, any seed is correct, so use the clock: each Round is different. This is
-            // a one-time read before the first Tick, not a read inside the simulation. In
-            // online play, the peers agree on the seed before the Round starts.
+            // a one-time read before the first Tick, not a read inside the simulation. Online,
+            // both Peers derive the same seed from the Match seed.
             // sim-guard: allow offline seed, read once before the first Tick of the Round
             RoundSeed = (ulong)DateTime.UtcNow.Ticks;
-            if (isRound)
+            if (online)
+                RoundSeed = FrogSmashers.Online.OnlineMatch.SeedForRound(GameController.levelNo, GameController.isShowDown);
+            else if (isRound)
                 RoundSeed = ReplayCheck.SeedForRound(RoundSeed);
             SimRng.Seed(RoundSeed);
-            if (isRound)
+            // Online Rounds aren't recorded yet: a first run uses predicted inputs, so a
+            // recording would need each Tick's final inputs, after any Rollback.
+            if (isRound && !online)
                 ReplayCheck.BeginRound(simulation, RoundSeed);
+
+            instance.online = null;
+            instance.waitTicks = 0;
+            if (online)
+            {
+                instance.StartOnlineSession(simulation);
+                if (RoundStarted != null)
+                    RoundStarted();
+                return;
+            }
 
             // A replay runs Direct: it checks the frame rate, and Sync Test is a separate check.
             if (isRound && NextRoundMode == Mode.SyncTest && !ReplayCheck.IsReplaying)
@@ -202,6 +244,80 @@ namespace FrogSmashers.Netcode
             ReplayCheck.EndRound();
             instance.simulation = null;
             instance.session = null;
+            if (instance.online != null)
+                instance.StartDraining();
+        }
+
+        /// <summary>
+        /// The Online Match ended (a Peer left, or the handshake failed). Tells the other Peer
+        /// and drops the sessions.
+        /// </summary>
+        public static void EndOnlineSession()
+        {
+            if (instance == null)
+                return;
+            if (instance.online != null)
+                instance.online.Disconnect();
+            if (instance.draining != null)
+                instance.draining.Disconnect();
+            instance.online = null;
+            instance.draining = null;
+            instance.roundEnded = true;
+        }
+
+        private void StartOnlineSession(FrogSimulation simulation)
+        {
+            var link = FrogSmashers.Online.OnlineMatch.Link;
+            int local = FrogSmashers.Online.OnlineMatch.LocalSlot;
+            int remote = FrogSmashers.Online.OnlineMatch.RemoteSlot;
+
+            // Six Players, as offline, so the Slot layout and the Saved State don't change.
+            // Slots 2 to 5 are unused: every Peer gives them a blank input.
+            var config = new RollbackConfig(playerCount: 6)
+            {
+                MaxPredictionFrames = 8,
+                FrameDelay = FrogSmashers.Online.OnlineMatch.FrameDelay,
+            };
+            var setup = new PeerSetup
+            {
+                BuildId = FrogSmashers.BuildInfo.Id,
+                SetupHash = FrogSmashers.Online.OnlineMatch.HashRoundSetup(RoundSeed),
+                FramesPerSecond = SimClock.TicksPerSecond,
+            };
+            setup.AddLocalPlayer(local).AddRemotePlayer(remote, FrogSmashers.Online.OnlineMatch.Link.Remote);
+
+            online = new PeerToPeerSession<FrogInput>(config, simulation, link, Codec, setup, Clock);
+            onlineRollbacksSeen = 0;
+            onlineRolledBackTicksSeen = 0;
+            CurrentMode = Mode.Online;
+            Debug.Log("[ONLINE] Round " + GameController.levelNo + (GameController.isShowDown ? " (Showdown)" : "")
+                + ": session started, local Slot " + local + ", seed " + RoundSeed.ToString("X16")
+                + ", setup " + setup.SetupHash.ToString("X8") + ", build " + setup.BuildId);
+        }
+
+        private void StartDraining()
+        {
+            draining = online;
+            online = null;
+            // sim-guard: allow a network timeout for the ended Round's session; not simulation
+            drainUntil = Time.realtimeSinceStartup + DrainSeconds;
+        }
+
+        // Keeps the last Round's session answering until the other Peer has every input it
+        // needs, or briefly at most. Its Ticks are all confirmed, so it never rolls back.
+        private void DrainPreviousSession()
+        {
+            if (draining == null)
+                return;
+            FrogSmashers.Online.OnlineMatch.Link.Poll();
+            draining.Poll();
+            while (draining.TryGetEvent(out SessionEvent ignored)) { }
+            // sim-guard: allow a network timeout for the ended Round's session; not simulation
+            if (Time.realtimeSinceStartup > drainUntil
+                || draining.GetStats(FrogSmashers.Online.OnlineMatch.Link.Remote).UnacknowledgedFrames == 0)
+            {
+                draining = null;
+            }
         }
 
         /// <summary>
@@ -238,9 +354,21 @@ namespace FrogSmashers.Netcode
 
         private void Update()
         {
+            DrainPreviousSession();
+
             if (simulation == null)
             {
                 accumulator = 0f;
+                return;
+            }
+
+            // Online, nothing runs until both Peers finish the handshake.
+            if (online != null && !online.IsSynchronized)
+            {
+                accumulator = 0f;
+                FrogSmashers.Online.OnlineMatch.Link.Poll();
+                online.Poll();
+                HandleOnlineEvents();
                 return;
             }
 
@@ -253,9 +381,15 @@ namespace FrogSmashers.Netcode
             while (accumulator >= SimClock.FixedDeltaTime && ticksRun < MaxTicksPerFrame && !roundEnded)
             {
                 accumulator -= SimClock.FixedDeltaTime;
-                AdvanceOneTick();
+                if (online != null)
+                    AdvanceOneOnlineTick();
+                else
+                    AdvanceOneTick();
                 ticksRun++;
             }
+
+            if (online != null)
+                LogOnlineStats();
 
             if (ticksRun == MaxTicksPerFrame && accumulator >= SimClock.FixedDeltaTime)
             {
@@ -331,6 +465,153 @@ namespace FrogSmashers.Netcode
                 session = null;
                 GameController.FinishRoundAfterSimulation();
             }
+        }
+
+        /// <summary>
+        /// One Tick of an Online Round, in Hindsight's order: poll (which rolls back if a remote
+        /// input proved a prediction wrong), add this machine's input, advance. A refused input
+        /// or a recommended wait skips the Tick; the frame pacing carries on.
+        /// </summary>
+        private void AdvanceOneOnlineTick()
+        {
+            FrogSmashers.Online.OnlineMatch.Link.Poll();
+            online.Poll();
+            if (!HandleOnlineEvents() || CheckOnlineRoundEnd())
+                return;
+
+            if (waitTicks > 0)
+            {
+                // Spread out, one Tick at a time, so the game doesn't visibly freeze.
+                waitTicks--;
+                TotalOnlineWaitedTicks++;
+                return;
+            }
+
+            if (!online.AddLocalInput(FrogSmashers.Online.OnlineMatch.LocalSlot, InputSampler.SampleLocal()))
+            {
+                TotalOnlineRefusedTicks++;
+                return;
+            }
+
+            long heapBefore = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+            tickTimer.Reset();
+            tickTimer.Start();
+            online.AdvanceFrame();
+            tickTimer.Stop();
+            TotalTickMilliseconds += tickTimer.Elapsed.TotalMilliseconds;
+            TotalTickAllocatedBytes += Math.Max(0, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - heapBefore);
+            TotalTicksRun++;
+
+            // Rollbacks happen inside Poll; count them here, once per Tick.
+            TotalRollbacks += online.RollbackCount - onlineRollbacksSeen;
+            TotalRollbackTicks += online.RolledBackFrames - onlineRolledBackTicksSeen;
+            onlineRollbacksSeen = online.RollbackCount;
+            onlineRolledBackTicksSeen = online.RolledBackFrames;
+
+            if (TickCompleted != null)
+                TickCompleted();
+
+            CheckOnlineRoundEnd();
+        }
+
+        /// <summary>
+        /// The Round ends once the Tick that ended it is confirmed by both Peers. Checking the
+        /// latest Tick instead would be wrong: a Peer that ran a few predicted Ticks ahead would
+        /// wait for inputs the other Peer never sends, because that Peer already stopped.
+        /// </summary>
+        private bool CheckOnlineRoundEnd()
+        {
+            if (online == null || roundEnded || !simulation.RoundOver || online.LastConfirmedFrame < simulation.RoundOverTick)
+                return false;
+
+            Debug.Log("[ONLINE] Round over at Tick " + simulation.RoundOverTick + " (confirmed), "
+                + online.RollbackCount + " Rollbacks, " + online.RolledBackFrames + " Ticks run again");
+            roundEnded = true;
+            StartDraining();
+            GameController.FinishRoundAfterSimulation();
+            return true;
+        }
+
+        /// <summary>Handles the session's events. Returns false when the Match has ended.</summary>
+        private bool HandleOnlineEvents()
+        {
+            while (online != null && online.TryGetEvent(out SessionEvent e))
+            {
+                switch (e.Kind)
+                {
+                    case SessionEventKind.Synchronized:
+                        Debug.Log("[ONLINE] synchronized, Tick 0 starts");
+                        break;
+                    case SessionEventKind.WaitRecommended:
+                        waitTicks += e.Frames;
+                        Debug.Log("[ONLINE] ahead of the other Peer: waiting " + e.Frames + " Ticks");
+                        break;
+                    case SessionEventKind.Interrupted:
+                    case SessionEventKind.Resumed:
+                        Debug.Log("[ONLINE] " + e);
+                        break;
+                    case SessionEventKind.DesyncDetected:
+                        ReportOnlineDesync(e);
+                        break;
+                    case SessionEventKind.SyncFailed:
+                        FrogSmashers.Online.OnlineMatch.End(e.Failure == SyncFailure.BuildId || e.Failure == SyncFailure.ProtocolVersion
+                            ? "Your friend is on a different version of the game."
+                            : "The two games disagree on the Round (" + e.Failure + ").");
+                        return false;
+                    case SessionEventKind.Disconnected:
+                        FrogSmashers.Online.OnlineMatch.End("Your friend left or the connection was lost.");
+                        return false;
+                }
+            }
+            return online != null;
+        }
+
+        /// <summary>
+        /// Online Desync: logs both checksums and writes this Peer's Saved State of that Tick, with
+        /// its field-by-field description, to persistentDataPath/desyncs/. The other Peer writes
+        /// its own; comparing the two descriptions names the field. Play continues.
+        /// </summary>
+        private void ReportOnlineDesync(SessionEvent e)
+        {
+            TotalDesyncs++;
+            Debug.LogWarning("[SIM] desync online tick=" + e.Frame + " local=" + e.LocalChecksum.ToString("X8")
+                + " remote=" + e.RemoteChecksum.ToString("X8"));
+            if (!online.TryGetCheckpointState(e.Frame, out StateBuffer state))
+                return;
+
+            try
+            {
+                string folder = System.IO.Path.Combine(Application.persistentDataPath, "desyncs");
+                System.IO.Directory.CreateDirectory(folder);
+                string name = "desync-tick" + e.Frame + "-slot" + FrogSmashers.Online.OnlineMatch.LocalSlot + "-" + FrogSmashers.BuildInfo.Id;
+                byte[] bytes = state.ToArray();
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(folder, name + ".bin"), bytes);
+                var lines = new List<string>();
+                foreach (var field in simulation.Describe(bytes))
+                    lines.Add(field.Key + " = " + field.Value);
+                System.IO.File.WriteAllLines(System.IO.Path.Combine(folder, name + ".txt"), lines);
+                Debug.LogWarning("[SIM] desync files written to " + folder + "/" + name + ".*");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[SIM] couldn't write the desync files: " + ex.Message);
+            }
+        }
+
+        private void LogOnlineStats()
+        {
+            // sim-guard: allow paces a diagnostics log line; not simulation
+            if (Time.realtimeSinceStartup < nextOnlineStats)
+                return;
+            // sim-guard: allow paces a diagnostics log line; not simulation
+            nextOnlineStats = Time.realtimeSinceStartup + 1f;
+            var stats = online.GetStats(FrogSmashers.Online.OnlineMatch.Link.Remote);
+            Debug.Log("[ONLINE] tick=" + online.FrameCount + " confirmed=" + online.LastConfirmedFrame
+                + " rtt=" + stats.RoundTripMs + "ms loss=" + stats.LossPercent.ToString("0.0") + "%"
+                + " advantage=" + stats.LocalFrameAdvantage + "/" + stats.RemoteFrameAdvantage
+                + " rollbacks=" + online.RollbackCount + " rolledBackTicks=" + online.RolledBackFrames
+                + " refused=" + TotalOnlineRefusedTicks + " waited=" + TotalOnlineWaitedTicks
+                + " sent=" + stats.BytesSentPerSecond.ToString("0") + "B/s");
         }
 
         /// <summary>
