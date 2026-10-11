@@ -89,11 +89,6 @@ public class GameController : MonoBehaviour, ISimulated
         playerScoreDisplays = new List<PlayerScoreDisplay>();
         instance = this;
 
-        // Register before the pools exist, so GameController ticks first and the pooled
-        // Characters and fly follow in slot order. OnEnable registers again, which
-        // does nothing.
-        SimulationDriver.Register(this);
-
         // A round is a self-contained simulation: it starts at tick 0 when its scene loads.
         // Without this the tick kept counting across scenes, so a round's state (the fly's
         // bob phase, for example) depended on how long the previous scenes had run. Online,
@@ -173,6 +168,11 @@ public class GameController : MonoBehaviour, ISimulated
         // After the Players, because each Character gets its Slot's Player.
         SimWorld.CreatePools(characterPrefab, flyPrefab);
 
+        // Hand the Round to the driver, which seeds the random stream and picks the mode.
+        // The join screen is a lobby, not a Round, so it never runs a Sync Test.
+        simulation = new FrogSimulation(this);
+        SimulationDriver.BeginScene(simulation, isRound: !isJoinScreen);
+
         if (isShowDown)
             foreach (var psd in playerScoreDisplays)
             {
@@ -224,18 +224,12 @@ public class GameController : MonoBehaviour, ISimulated
     FreeLives.InputState input = new InputState(); // sim-state: exclude join-screen input, read in the frame loop before the Round
     FreeLives.InputState combinedInput = new InputState();
 
-    void OnEnable()
-    {
-        SimulationDriver.Register(this);
-    }
-
-    void OnDisable()
-    {
-        SimulationDriver.Unregister(this);
-    }
+    // This scene's simulation, handed to the driver in Awake.
+    FrogSimulation simulation; // sim-state: exclude the simulation object itself, created once per scene
 
     void OnDestroy()
     {
+        SimulationDriver.EndScene(simulation);
         if (instance == this)
             SimWorld.Clear();
     }
@@ -303,19 +297,24 @@ public class GameController : MonoBehaviour, ISimulated
             }
 
             finishDelay -= deltaTime;
-            if (finishDelay < 0f && !roundEnding)
+            if (finishDelay < 0f)
             {
-                // The scene change happens at the end of the frame, and one frame can run
-                // several ticks. Without this flag, each remaining tick would call
-                // FinishRound again and skip a level.
-                roundEnding = true;
-                FinishRound();
+                // The simulation never changes scene: a scene load cannot be rolled back. It
+                // only records that the Round is over; the driver changes scene after the Tick
+                // (FinishRoundAfterSimulation).
+                roundOver = true;
             }
         }
     }
 
-    // Set once FinishRound has started the scene change. See SimulateTick.
-    bool roundEnding;
+    // Set when the Round's end delay runs out. See SimulateTick.
+    bool roundOver;
+
+    /// <summary>True once the Round's end delay has run out.</summary>
+    public bool RoundOver
+    {
+        get { return roundOver; }
+    }
 
     /// <summary>
     /// Saves or loads the Round's Simulation State. Players, the roster, the
@@ -333,7 +332,7 @@ public class GameController : MonoBehaviour, ISimulated
         s.Float(nameof(finishDelay), ref finishDelay);
         s.Int(nameof(redTeamScore), ref redTeamScore);
         s.Int(nameof(blueTeamScore), ref blueTeamScore);
-        s.Bool(nameof(roundEnding), ref roundEnding);
+        s.Bool(nameof(roundOver), ref roundOver);
 
         int winner = Player.SlotOf(winningPlayer);
         s.Slot(nameof(winningPlayer), ref winner);
@@ -552,6 +551,61 @@ public class GameController : MonoBehaviour, ISimulated
     }
 
     public static int levelNo; // sim-state: exclude Match total, changed between Rounds
+    /// <summary>
+    /// Ends the Round after the driver has run the Tick that set RoundOver: records the winner
+    /// for the score screen and changes scene. Outside the simulation, so a Rollback never
+    /// runs it twice.
+    /// </summary>
+    public static void FinishRoundAfterSimulation()
+    {
+        if (instance == null)
+            return;
+        lastWinningPlayer = instance.winningPlayer;
+        instance.FinishRound();
+    }
+
+    /// <summary>
+    /// The roster: one membership flag per Slot, in Slot order. On load, the roster lists are
+    /// rebuilt in Slot order from the flags. Saving the flags rather than the lists keeps the
+    /// Saved State the same size whoever is playing.
+    /// </summary>
+    public static void SyncRoster(StateStream s)
+    {
+        if (inactivePlayers == null)
+            inactivePlayers = new List<Player>();
+
+        bool changed = false;
+        for (int slot = 0; slot < 6; slot++)
+        {
+            var player = Player.BySlot(slot);
+            bool inRoster = player != null && activePlayers.Contains(player);
+            bool before = inRoster;
+            s.Bool(RosterNames[slot], ref inRoster);
+            if (s.IsReading && inRoster != before)
+                changed = true;
+            rosterFlags[slot] = inRoster;
+        }
+
+        if (!s.IsReading || !changed)
+            return;
+
+        activePlayers.Clear();
+        inactivePlayers.Clear();
+        for (int slot = 0; slot < 6; slot++)
+        {
+            var player = Player.BySlot(slot);
+            if (player == null)
+                continue;
+            if (rosterFlags[slot])
+                activePlayers.Add(player);
+            else
+                inactivePlayers.Add(player);
+        }
+    }
+
+    static readonly string[] RosterNames = { "inRoster[0]", "inRoster[1]", "inRoster[2]", "inRoster[3]", "inRoster[4]", "inRoster[5]" }; // sim-state: exclude field names for the Saved State, fixed
+    static readonly bool[] rosterFlags = new bool[6]; // sim-state: exclude scratch space for SyncRoster
+
     void FinishRound()
     {
         if (state == GameState.JoinScreen)
@@ -705,7 +759,6 @@ public class GameController : MonoBehaviour, ISimulated
                 if (winner.character != null)
                     winner.character.GetComponent<ScorePlum>().ShowText("WIN!", 5f);
                 instance.winningPlayer = winner;
-                lastWinningPlayer = winner;
             }
             else if (isTeamMode)
             {
@@ -725,8 +778,7 @@ public class GameController : MonoBehaviour, ISimulated
                     if (winner.character != null)
                         winner.character.GetComponent<ScorePlum>().ShowText("WIN!", 5f);
                     instance.winningPlayer = winner;
-                    lastWinningPlayer = winner;
-                }
+                    }
 
             }
 
@@ -777,7 +829,6 @@ public class GameController : MonoBehaviour, ISimulated
                 if (gotPoint.character != null)
                     gotPoint.character.GetComponent<ScorePlum>().ShowText("WIN!", 5f);
                 instance.winningPlayer = gotPoint;
-                lastWinningPlayer = gotPoint;
             }
             else
             {
@@ -836,7 +887,9 @@ public class GameController : MonoBehaviour, ISimulated
 
     public void OnGUI()
     {
-        if (showGui)
+        // Hidden during a Sync Test: these toggles are Round Setup, and changing one in the
+        // middle of a Round would make the Rollback runs differ from the first runs.
+        if (showGui && !SimulationDriver.SessionActive)
         {
             GUILayout.BeginArea(new Rect(0, 0, 400, 400));
             charactersBounceEachOther = GUILayout.Toggle(charactersBounceEachOther, "Characters Bounce Each Other");

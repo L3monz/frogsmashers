@@ -50,6 +50,9 @@ public class PlayerScoreDisplay : MonoBehaviour
 
     public void TemorarilyDisplay(string str, float time = 2f)
     {
+        // A Rollback runs past Ticks again; their score popups already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         text.text = str;
         temporaryDisplayString = str;
         temporaryDisplayTimeLeft = time;

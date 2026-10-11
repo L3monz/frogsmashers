@@ -260,13 +260,6 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
         flyLayer = 1 << LayerMask.NameToLayer("Fly");
     }
 
-    // The pool registers each Character once, at creation, in Slot order, and it stays
-    // registered while dead (the driver skips inactive objects). Unregister only when the
-    // scene ends.
-    void OnDestroy()
-    {
-        SimulationDriver.Unregister(this);
-    }
 
     /// <summary>
     /// Push a frame's worth of input in from outside, instead of reading the gamepad.

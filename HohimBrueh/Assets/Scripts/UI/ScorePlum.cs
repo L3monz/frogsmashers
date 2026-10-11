@@ -50,6 +50,9 @@ public class ScorePlum : MonoBehaviour, ISpawnable
 
     public void ShowText(string text, float time = 2f)
     {
+        // A Rollback runs past Ticks again; their popups already showed the first time.
+        if (SimulationDriver.InRollback)
+            return;
         this.text.text = text;
         displayTimeLeft = time;
     }

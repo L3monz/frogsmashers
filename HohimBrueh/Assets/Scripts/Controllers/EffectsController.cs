@@ -48,11 +48,17 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateSmokeRing(Vector3 pos, Quaternion rot, Color col)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var sr = Instantiate(instance.smokeRing, pos - Vector3.forward * 3f, rot) as GameObject;
     }
 
     public static void CreateLineParticle(Vector3 pos, Quaternion rot, Color col, Vector2 velocity, float velocityScale, float lifeScale)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var sr = Instantiate(instance.lineParticle, pos, rot) as GameObject;
         sr.GetComponent<SpriteRenderer>().color = col;
         sr.GetComponent<Confetti>().velocity = velocity;
@@ -63,12 +69,18 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateSmokePuff(Vector3 pos, Color col)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var sp = Instantiate(instance.smokePuff[Random.Range(0, instance.smokePuff.Length)], pos, Quaternion.identity) as SpriteRenderer;
         sp.color = col;
     }
 
     public static void CreateSpawnEffects(Vector2 pos, Color col)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         //var spp = Instantiate(instance.spawnPuffParticleSystem, (Vector3)pos - Vector3.forward, Quaternion.identity) as ParticleSystem;
         //spp.startColor = col;
         //Destroy(spp.gameObject, 5f);
@@ -80,6 +92,9 @@ public class EffectsController : MonoBehaviour
 
     public static void ShakeCamera(Vector2 shakeVector, float intensity)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         instance.cameraShakeVelocity += shakeVector * (instance.shakePower * intensity + 10f);
     }
 
@@ -224,6 +239,9 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateShingEffect(Vector2 pos, Vector2 attackDirection)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         float rot = 0f;
         if (attackDirection.x > 0f)
             rot = -Vector3.Angle(Vector3.up, attackDirection);
@@ -254,17 +272,26 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateJumpPuffStraight(Vector2 pos, Side orientation)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var jp = Instantiate(instance.jumpPuffStraight, (Vector3)pos + GetOffsetForSide(orientation) + Vector3.forward, GetRotationForSide(orientation));
     }
 
     public static void CreateJumpPuffSkew(Vector2 pos, float direction)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var jp = Instantiate(instance.jumpPuffSkew, (Vector3)pos + Vector3.forward, Quaternion.identity);
         jp.transform.localScale = new Vector3(direction, 1f, 1f);
     }
 
     public static void CreateBouncePuff(Vector2 pos, Side orientation)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         GameObject prefab = instance.bouncePuff;
         if (orientation == Side.Left || orientation == Side.Right)
         {
@@ -277,6 +304,9 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateDustPuff(Vector2 pos, float direction)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var jp = Instantiate(instance.dustPuff, (Vector3)pos + Vector3.forward, Quaternion.identity);
         jp.transform.localScale = new Vector3(direction, 1f, 1f);
     }
@@ -290,6 +320,9 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateHitEffect(Vector2 pos, float life, bool powerHit)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var he = Instantiate(instance.hitEffectPrefab, (Vector3)pos + Vector3.forward * 2f, Quaternion.identity) as HitEffect;
         he.life = life;
         he.scale = 1f + life * 0.4f;
@@ -309,6 +342,9 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateLocalizedShake(Vector2 pos, Vector2 direction, float velocity, float life)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var ls = Instantiate(instance.localizedShakePrefab, (Vector3)pos - Vector3.forward * 9f, Quaternion.identity) as LocalizedShake;
         ls.life = 0.1f + life * 0.1f;
         ls.velocity = velocity;
@@ -318,12 +354,18 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateTongueHitEffect(Vector2 pos, float life)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var he = Instantiate(instance.tongueHitEffect, (Vector3)pos - Vector3.forward, Quaternion.identity);
 
     }
 
     public static void CreateTrailFader(CharacterAnimator animator, float lifeM, Color color, bool grow = false)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var traile = Instantiate(instance.faderTrailPrefab, animator.rend.transform.position + Vector3.forward * 3.5f, animator.rend.transform.rotation) as TrailFader;
         traile.transform.localScale = animator.rend.transform.localScale;
         traile.spriteRenderer.material.color = color;
@@ -342,6 +384,9 @@ public class EffectsController : MonoBehaviour
 
     internal static void CreateKnockedUpEffect(CharacterAnimator characterAnimator)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var kue = Instantiate(instance.knockedUpEffect, characterAnimator.transform.position - Vector3.forward * 5f, Quaternion.identity) as KnockedUpEffect;
 
         kue.spriteRenderer.color = characterAnimator.rend.color;
@@ -350,6 +395,9 @@ public class EffectsController : MonoBehaviour
 
     public static void SprayParticles(Vector2 pos, Vector2 direction, float force, int amount, float life, float angle)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         for (int i = 0; i < amount; i++)
         {
             var hp = Instantiate(instance.hitParticlePrefab, pos + UnityEngine.Random.insideUnitCircle, Quaternion.identity) as HitParticle;
@@ -364,6 +412,9 @@ public class EffectsController : MonoBehaviour
 
     public static void CreateStarParticles(Vector2 pos, Vector2 velocity, float life, int amount, Color[] colors)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         for (int i = 0; i < amount; i++)
         {
             var hp = Instantiate(instance.hitParticlePrefab, pos + UnityEngine.Random.insideUnitCircle, Quaternion.identity) as HitParticle;
@@ -388,6 +439,9 @@ public class EffectsController : MonoBehaviour
 
     internal static void CreateSideScorePlum(Vector3 position, Side killedOnSide, int hitsTaken, Color playerColor)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         Quaternion rotation = Quaternion.identity;
         position.x = Mathf.Clamp(position.x, -31f, 31f);
         position.y = Mathf.Clamp(position.y, -17f, 17f);
@@ -469,6 +523,9 @@ public class EffectsController : MonoBehaviour
 
     internal static void CreateTurnAroundPuff(Vector3 position, float dir)
     {
+        // A Rollback runs past Ticks again; their effects already showed the first time.
+        if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+            return;
         var dp = Instantiate(instance.turnAroundPuff, position + Vector3.forward, Quaternion.identity);
         dp.transform.localScale = new Vector3(dir, 1f, 1f);
     }

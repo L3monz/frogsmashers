@@ -21,11 +21,17 @@ namespace FreeLives
 
         public static void PlaySoundEffect(string soundEffectName)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             PlaySoundEffect(instance.globalSounds, soundEffectName);
         }
 
         public static void PlaySoundEffect(SoundHolder soundHolder, string soundEffectName)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             var audio = CreateAudioSource();
             audio.spatialize = false;
             var info = GetSoundInfo(soundHolder, soundEffectName);
@@ -42,6 +48,9 @@ namespace FreeLives
 
         public static void StopMusic()
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             if (instance.GetComponent<AudioSource>() != null)
             {
                 instance.GetComponent<AudioSource>().Stop();
@@ -50,11 +59,17 @@ namespace FreeLives
 
         public static void PlaySoundEffect(string soundEffectName, float volume)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             PlaySoundEffect(instance.globalSounds, soundEffectName, volume);
         }
 
         public static void PlaySoundEffect(SoundHolder soundHolder, string soundEffectName, float volume)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             
             var info = GetSoundInfo(soundHolder, soundEffectName);
             if (info != null && info.clips.Length > 0)
@@ -74,12 +89,18 @@ namespace FreeLives
 
         public static void PlaySoundEffect(string soundEffectName, float volume, Vector3 pos)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             PlaySoundEffect(instance.globalSounds, soundEffectName, volume, pos);
         }
 
 
         public static void PlaySoundEffect(SoundHolder soundHolder, string soundEffectName, float volume, Vector3 pos)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             
             var info = GetSoundInfo(soundHolder, soundEffectName);
             if (info == null || info.clips.Length == 0)
@@ -103,11 +124,17 @@ namespace FreeLives
 
         public static void PlaySoundEffect(string soundEffectName, float volume, Vector3 pos, float pitch)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             PlaySoundEffect(instance.globalSounds, soundEffectName, volume, pos, pitch);
         }
 
         public static void PlaySoundEffect(SoundHolder soundHolder, string soundEffectName, float volume, Vector3 pos, float pitch)
         {
+            // A Rollback runs past Ticks again; their sounds already played the first time.
+            if (FrogSmashers.Netcode.SimulationDriver.InRollback)
+                return;
             var audio = CreateAudioSource();
             audio.transform.position = pos;
             var info = GetSoundInfo(soundHolder, soundEffectName);

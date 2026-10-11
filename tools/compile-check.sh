@@ -32,6 +32,9 @@ RSP="$OUT/compile.rsp"
   echo "-nowarn:0169,0414,0649,0108,0219,0618,0162,0067,0429"
   echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/mscorlib.dll")\""
   echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/Facades/netstandard.dll")\""
+  # Unity references these by default too (Stopwatch, LINQ and others live there).
+  echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/System.dll")\""
+  echo "-r:\"$(wslpath -w "$UNITY/MonoBleedingEdge/lib/mono/unityjit/System.Core.dll")\""
   for dll in "$UNITY/Managed/UnityEngine/"UnityEngine*.dll; do
     echo "-r:\"$(wslpath -w "$dll")\""
   done

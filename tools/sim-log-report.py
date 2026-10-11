@@ -33,6 +33,9 @@ JUMP = re.compile(r"\[SIM\] jump P(\S+) apex=(\S+) ticks=(\d+) hold=(\d+) clean=
 HIT = re.compile(r"\[SIM\] hit P(\S+) hitsTaken=(\d+) by=P(\S+) velocity=\((\S+), (\S+)\) tick=(\d+)")
 CAP_CHANGE = re.compile(r"\[SIM\] frame cap set to (\w+)")
 SESSION = re.compile(r"\[SIM\] session start")
+SYNC = re.compile(r"mode=(\w+) rollbacks=(\d+) rollbackTicks=(\d+) msPerTick=([\d.]+) desyncs=(\d+)")
+ROUND = re.compile(r"\[SIM\] round start mode=(\w+) seed=(\d+) scene=(\S+)")
+DESYNC = re.compile(r"\[SIM\] desync (.*)")
 
 
 def main():
@@ -140,6 +143,34 @@ def main():
         print("  RESULT: INCOMPLETE (no hold length had 3+ samples at two caps)")
     else:
         print(f"  RESULT: {compared - differs} of {compared} hold lengths agree across caps")
+
+    print("\n== Sync Test (target: rollbacks keep happening, zero desyncs)")
+    rounds = [ROUND.search(l) for l in lines]
+    for r in (r for r in rounds if r):
+        print(f"  round start: {r[3]}  mode={r[1]}  seed={r[2]}")
+    per_mode = collections.defaultdict(lambda: [0, 0, 0, 0.0])  # seconds, rollbacks, rollback ticks, ms sum
+    last_desyncs = 0
+    for line in lines:
+        m = SYNC.search(line)
+        if not m:
+            continue
+        acc = per_mode[m[1]]
+        acc[0] += 1
+        acc[1] += int(m[2])
+        acc[2] += int(m[3])
+        acc[3] += float(m[4])
+        last_desyncs = int(m[5])
+    for mode, (secs, rb, rbt, ms) in sorted(per_mode.items()):
+        print(f"  {mode:>8}: {secs:4d}s  rollbacks={rb}  rollback ticks={rbt}  avg ms per tick={ms / max(secs, 1):.3f}")
+    desync_lines = [DESYNC.search(l)[1] for l in lines if DESYNC.search(l)]
+    for d in desync_lines[:20]:
+        print(f"  DESYNC {d}")
+    if "SyncTest" in per_mode:
+        rolled = per_mode["SyncTest"][1] > 0
+        print("  RESULT:", "PASS" if rolled and last_desyncs == 0 else
+              ("FAIL (desyncs)" if last_desyncs else "FAIL (no rollbacks recorded)"))
+    else:
+        print("  no Sync Test seconds recorded")
 
     print("\n== Hits")
     hits = [HIT.search(l) for l in lines]

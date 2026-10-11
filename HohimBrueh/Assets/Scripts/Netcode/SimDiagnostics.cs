@@ -59,6 +59,9 @@ namespace FrogSmashers.Netcode
         private double timeReceivedAtLastReport;
         private double timeDroppedAtLastReport;
         private long ticksAtLastReport;
+        private long rollbacksAtLastReport;
+        private long rollbackTicksAtLastReport;
+        private double tickMillisecondsAtLastReport;
         private int framesThisSecond;
         private int dropsAtLastReport;
 
@@ -76,6 +79,8 @@ namespace FrogSmashers.Netcode
         private void OnEnable()
         {
             SimulationDriver.TickCompleted += OnTick;
+            SimulationDriver.RoundStarted += OnRoundStarted;
+            SimulationDriver.DesyncReported += OnDesync;
             Log("session start, unityVersion=" + Application.unityVersion
                 + " vSyncCount=" + QualitySettings.vSyncCount
                 + " targetFrameRate=" + Application.targetFrameRate);
@@ -114,6 +119,8 @@ namespace FrogSmashers.Netcode
         private void OnDisable()
         {
             SimulationDriver.TickCompleted -= OnTick;
+            SimulationDriver.RoundStarted -= OnRoundStarted;
+            SimulationDriver.DesyncReported -= OnDesync;
             UnityEngine.InputSystem.InputSystem.onDeviceChange -= OnDeviceChange;
         }
 
@@ -121,6 +128,12 @@ namespace FrogSmashers.Netcode
         {
             if (Input.GetKeyDown(KeyCode.F3))
                 CycleFrameCap();
+
+            if (Input.GetKeyDown(KeyCode.F4))
+            {
+                SimulationDriver.ToggleNextRoundMode();
+                Log("next Round mode set to " + SimulationDriver.NextRoundMode);
+            }
 
             LogGamepadPresses();
 
@@ -145,10 +158,21 @@ namespace FrogSmashers.Netcode
                 ticksAtLastReport = SimulationDriver.TotalTicksRun;
                 double simTimeThisSecond = received - dropped;
 
+                // Rollbacks and the time the simulation took this second. In Sync Test mode a
+                // Tick costs more, because every 8 Ticks are run twice.
+                long rollbacks = SimulationDriver.TotalRollbacks - rollbacksAtLastReport;
+                long rollbackTicks = SimulationDriver.TotalRollbackTicks - rollbackTicksAtLastReport;
+                double tickMilliseconds = SimulationDriver.TotalTickMilliseconds - tickMillisecondsAtLastReport;
+                rollbacksAtLastReport = SimulationDriver.TotalRollbacks;
+                rollbackTicksAtLastReport = SimulationDriver.TotalRollbackTicks;
+                tickMillisecondsAtLastReport = SimulationDriver.TotalTickMilliseconds;
+                double msPerTick = ticks > 0 ? tickMilliseconds / ticks : 0.0;
+
                 Log(string.Format(CultureInfo.InvariantCulture,
-                    "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000}",
+                    "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000} mode={8} rollbacks={9} rollbackTicks={10} msPerTick={11:0.000} desyncs={12}",
                     framesThisSecond / secondTimer, ticks, SimClock.Tick, drops,
-                    CapLabel(), Time.timeScale, secondTimer, simTimeThisSecond));
+                    CapLabel(), Time.timeScale, secondTimer, simTimeThisSecond,
+                    SimulationDriver.CurrentMode, rollbacks, rollbackTicks, msPerTick, SimulationDriver.TotalDesyncs));
 
                 foreach (var player in GameController.activePlayers)
                 {
@@ -168,6 +192,22 @@ namespace FrogSmashers.Netcode
                 secondTimer = 0f;
                 framesThisSecond = 0;
             }
+        }
+
+        private void OnRoundStarted()
+        {
+            Log("round start mode=" + SimulationDriver.CurrentMode + " seed=" + SimulationDriver.RoundSeed.ToString(CultureInfo.InvariantCulture)
+                + " scene=" + UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+            for (int i = 0; i < aliveLastTick.Length; i++)
+                aliveLastTick[i] = false;
+        }
+
+        private void OnDesync(int tick, IList<string> fields)
+        {
+            Log("desync tick=" + tick.ToString(CultureInfo.InvariantCulture) + " fields=" + fields.Count.ToString(CultureInfo.InvariantCulture)
+                + "; the rest of this Round runs in Direct mode");
+            foreach (var field in fields)
+                Log("desync field " + field);
         }
 
         private void CycleFrameCap()

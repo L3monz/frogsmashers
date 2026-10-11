@@ -89,12 +89,6 @@ public class Fly : MonoBehaviour, ISimulated, ISpawnable, IHideable
         }
     }
 
-    // The pool registers the fly once, at creation, and it stays registered while dead or
-    // hidden (the driver skips inactive objects). Unregister only when the scene ends.
-    void OnDestroy()
-    {
-        SimulationDriver.Unregister(this);
-    }
 
     internal bool TryClaim(Character claimant)
     {

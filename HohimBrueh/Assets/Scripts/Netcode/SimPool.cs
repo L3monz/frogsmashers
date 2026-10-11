@@ -34,9 +34,8 @@ namespace FrogSmashers.Netcode
     /// never-simulated instance, captured when the pool is created. Every synced field gets
     /// its starting value back, with no reset code to keep in step with the fields.
     ///
-    /// The pool registers its objects with the driver once, in slot order, and they stay
-    /// registered while dead; the driver skips inactive objects. Registering in OnEnable, as
-    /// before, would change the tick order every time something Spawned.
+    /// The simulation ticks the pooled objects in slot order and skips dead ones, so the
+    /// tick order never depends on who Spawned when.
     /// </summary>
     public sealed class SimPool<T> where T : Component, ISimulated
     {
@@ -71,7 +70,6 @@ namespace FrogSmashers.Netcode
                 items[i] = item;
                 spawnables[i] = item.GetComponentsInChildren<ISpawnable>(true);
                 sections[i] = name + "[" + i + "]";
-                SimulationDriver.Register(item);
             }
             if (Application.isPlaying)
                 Object.Destroy(holder);
