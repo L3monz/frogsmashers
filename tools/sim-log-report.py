@@ -55,6 +55,7 @@ def main():
     seconds_by_cap = collections.defaultdict(list)
     bad_seconds = []
     hitch_seconds = []
+    idle_seconds = 0
     drops = 0
     # The first two report seconds cover the editor entering play mode and any one-time
     # work at scene start, so their tick counts mean nothing.
@@ -80,6 +81,10 @@ def main():
             # much time into ticks, give or take the fraction of a tick it carries over. A
             # stall makes the simulated time shorter than the wall time; that is a hitch.
             wall, sim = float(m[7]), float(m[8])
+            if ticks == 0 and sim == 0:
+                # No simulation in this scene (title, menus, score screen): the driver idles.
+                idle_seconds += 1
+                continue
             if d > 0 or sim < wall * 0.9:
                 hitch_seconds.append(line.strip())
                 continue
@@ -101,6 +106,7 @@ def main():
         ticks = [r[1] for r in rows]
         print(f"  cap={cap:>5}: {len(rows):3d}s  fps {min(fps):6.1f}-{max(fps):6.1f}  ticks {min(ticks)}-{max(ticks)}")
     print(f"  backlog drops: {drops}")
+    print(f"  idle seconds, no simulation in the scene (not counted): {idle_seconds}")
     print(f"  hitch seconds (not counted): {len(hitch_seconds)}")
     for line in hitch_seconds[:5]:
         print("   ", line)
