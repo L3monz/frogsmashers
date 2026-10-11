@@ -1,8 +1,9 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using FrogSmashers.Netcode;
 
-public class CharacterAnimator : MonoBehaviour
+public class CharacterAnimator : MonoBehaviour, ISpawnable
 {
 
     enum AnimState
@@ -171,6 +172,26 @@ public class CharacterAnimator : MonoBehaviour
             rend.color = character.player.color;
             spriteDefaultOffset = rend.transform.localPosition;
         }
+    }
+
+    /// <summary>
+    /// Resets the view for a new life. The Character is pooled (spec D5), so this animator
+    /// keeps its state from the previous life, where a new instance used to start fresh:
+    /// it could start in the old animation, or with the tongue still showing. The colour is
+    /// set again too, because a Player can change colour on the join screen.
+    /// </summary>
+    public void OnSpawn()
+    {
+        tongueLine.enabled = false;
+        tongueTip.gameObject.SetActive(false);
+        animState = AnimState.Idle;
+        frame = 0;
+        frameCounter = 0f;
+        transitionTime = 0f;
+        wasBurp = false;
+        rend.transform.localRotation = Quaternion.identity;
+        if (character.player != null)
+            rend.color = character.player.color;
     }
 
     // Update is called once per frame

@@ -171,6 +171,17 @@ namespace FrogSmashers.Netcode
         /// known inputs in, and calling this — with the input-gathering step skipped, since a
         /// replay must not re-read a gamepad.
         /// </summary>
+        /// <summary>
+        /// Pooled objects stay registered while dead (spec D5), so the tick skips any that are
+        /// inactive. One that Despawns during a Tick does not tick again that Tick, which fixes
+        /// the deferred-Destroy problem (SMA-25). Also false for an object Unity destroyed.
+        /// </summary>
+        private static bool IsLive(object participant)
+        {
+            var behaviour = participant as MonoBehaviour;
+            return behaviour != null && behaviour.isActiveAndEnabled;
+        }
+
         public void AdvanceOneTick(bool sampleInput = true)
         {
             // Push every transform into Box2D before any hit check runs. Auto sync already
@@ -183,14 +194,14 @@ namespace FrogSmashers.Netcode
             {
                 for (int i = 0; i < inputSources.Count; i++)
                 {
-                    if (inputSources[i] != null)
+                    if (IsLive(inputSources[i]))
                         inputSources[i].SampleInput();
                 }
             }
 
             for (int i = 0; i < simulated.Count; i++)
             {
-                if (simulated[i] != null)
+                if (IsLive(simulated[i]))
                     simulated[i].SimulateTick(SimClock.FixedDeltaTime);
             }
 

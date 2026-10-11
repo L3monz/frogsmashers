@@ -38,7 +38,19 @@ public class Player
             bySlot[sortPriority] = this;
     }
 
-    public Character character; // sim-state: exclude becomes a property over the Character pool in P3 (spec D5)
+    /// <summary>
+    /// This Player's Character while it is alive, otherwise null. Always the pooled Character
+    /// in this Player's Slot (spec D5). A property, not a field, so the many existing
+    /// "character == null" checks keep meaning "no live Character".
+    /// </summary>
+    public Character character
+    {
+        get
+        {
+            var pool = SimWorld.Characters;
+            return pool != null && pool.IsAlive(sortPriority) ? pool.Get(sortPriority) : null;
+        }
+    }
 
     public float spawnDelay = 0f;
 

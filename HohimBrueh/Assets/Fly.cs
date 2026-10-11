@@ -4,16 +4,13 @@ using FrogSmashers.Netcode;
 using Hindsight.Determinism;
 using UnityEngine;
 
-public class Fly : MonoBehaviour, ISimulated
+public class Fly : MonoBehaviour, ISimulated, ISpawnable, IHideable
 {
-    /// <summary>
-    /// The fly in play, if any. There is at most one, so a Character's reference to the fly
-    /// it is eating is saved as a bool and resolved through this. P3 replaces it with the
-    /// fly pool (spec D5).
-    /// </summary>
-    public static Fly Active { get; private set; } // sim-state: exclude lookup, set in Awake and OnDestroy
-
     Vector2 velocity, targetVelocity;
+
+    // Alive but swallowed: a Character holds the fly in its mouth. The pool keeps a hidden
+    // fly inactive, so it neither ticks nor gets caught again.
+    bool hidden;
     int terrainLayer; // sim-state: exclude set in Awake from the layer name
     public SpriteRenderer sprite; // sim-state: exclude view reference (its flip is set every Tick from velocity)
 
@@ -33,17 +30,40 @@ public class Fly : MonoBehaviour, ISimulated
     // tick on every machine. Unity calls Start later, from the frame loop, so the draw order
     // would depend on frame timing. Also, a tick can run before Start, and the fly would
     // simulate with no terrain layer and no velocity.
+    // Configuration only. The fly is pooled (spec D5): Awake runs once, on its first
+    // activation, so per-life setup belongs in OnSpawn.
     void Awake()
     {
-        Active = this;
         terrainLayer = 1 << LayerMask.NameToLayer("Ground");
+    }
+
+    /// <summary>
+    /// Called by the pool on the Tick the fly Spawns. The first direction used to be drawn in
+    /// Awake; a pooled fly runs Awake only once, so it moved here. Same point in the Tick, so
+    /// the same random draw.
+    /// </summary>
+    public void OnSpawn()
+    {
         velocity = SimRng.Direction() * 10f;
     }
 
-    void OnDestroy()
+    public bool Hidden
     {
-        if (Active == this)
-            Active = null;
+        get { return hidden; }
+    }
+
+    /// <summary>Swallowed: stays alive, stops ticking, cannot be caught.</summary>
+    public void Hide()
+    {
+        hidden = true;
+        gameObject.SetActive(false);
+    }
+
+    /// <summary>Spat out again.</summary>
+    public void Show()
+    {
+        hidden = false;
+        gameObject.SetActive(true);
     }
 
     public void SyncState(StateStream s)
@@ -55,6 +75,7 @@ public class Fly : MonoBehaviour, ISimulated
 
         s.Vector2(nameof(velocity), ref velocity);
         s.Vector2(nameof(targetVelocity), ref targetVelocity);
+        s.Bool(nameof(hidden), ref hidden);
         s.Bool(nameof(BeingIngested), ref BeingIngested);
         s.Float(nameof(ingestTimeout), ref ingestTimeout);
         s.Float(nameof(updateDirectionDelay), ref updateDirectionDelay);
@@ -68,12 +89,9 @@ public class Fly : MonoBehaviour, ISimulated
         }
     }
 
-    void OnEnable()
-    {
-        SimulationDriver.Register(this);
-    }
-
-    void OnDisable()
+    // The pool registers the fly once, at creation, and it stays registered while dead or
+    // hidden (the driver skips inactive objects). Unregister only when the scene ends.
+    void OnDestroy()
     {
         SimulationDriver.Unregister(this);
     }
@@ -129,7 +147,7 @@ public class Fly : MonoBehaviour, ISimulated
             RunMotion(deltaTime);
 
         if (transform.position.x < Terrain.LeftKillPoint || transform.position.x > Terrain.RightKillPoint || transform.position.y > Terrain.TopKillPoint || transform.position.y < Terrain.BotKillPoint)
-            Destroy(gameObject);
+            SimWorld.Flies.Despawn(0);
 
     }
 

@@ -50,6 +50,10 @@ namespace FrogSmashers.Netcode
 
         private readonly Dictionary<Character, JumpTracker> trackers = new Dictionary<Character, JumpTracker>();
 
+        // Characters are pooled (spec D5), so a respawn reuses the same object. Spawns are
+        // found from each Slot going from no Character to a live one.
+        private readonly bool[] aliveLastTick = new bool[6];
+
         private int capIndex;
         private float secondTimer;
         private double timeReceivedAtLastReport;
@@ -187,6 +191,22 @@ namespace FrogSmashers.Netcode
             foreach (var player in GameController.activePlayers)
             {
                 var character = player.character;
+                int slot = player.sortPriority;
+                bool alive = character != null;
+                if (slot >= 0 && slot < aliveLastTick.Length && alive != aliveLastTick[slot])
+                {
+                    aliveLastTick[slot] = alive;
+                    if (alive)
+                    {
+                        Vector3 p = character.transform.position;
+                        Log(string.Format(CultureInfo.InvariantCulture, "spawn P{0} at ({1:0.00}, {2:0.00}) tick={3}",
+                            Slot(player), p.x, p.y, SimClock.Tick));
+                    }
+                    else
+                    {
+                        Log("despawn P" + Slot(player) + " tick=" + SimClock.Tick.ToString(CultureInfo.InvariantCulture));
+                    }
+                }
                 if (character == null)
                     continue;
 
@@ -195,9 +215,6 @@ namespace FrogSmashers.Netcode
                 {
                     tracker = new JumpTracker { WasOnGround = character.OnGround, HitsTaken = character.hitsTaken };
                     trackers[character] = tracker;
-                    Vector3 p = character.transform.position;
-                    Log(string.Format(CultureInfo.InvariantCulture, "spawn P{0} at ({1:0.00}, {2:0.00}) tick={3}",
-                        Slot(player), p.x, p.y, SimClock.Tick));
                 }
 
                 ObserveHit(character, tracker);

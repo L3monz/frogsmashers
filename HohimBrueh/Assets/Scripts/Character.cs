@@ -31,7 +31,7 @@ public enum TongueState
     HitFlyBurping
 }
 
-public class Character : MonoBehaviour, ISimulated, ISimulationInput
+public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
 {
     [HideInInspector]
     public InputState input = new InputState();
@@ -237,7 +237,12 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
         }
     }
 
-    void Start()
+    /// <summary>
+    /// Called by the pool on the Tick this Character Spawns. Reads the device once, as Start
+    /// used to; a pooled Character runs Start only on its first life. Reading a device inside
+    /// a Tick is temporary: P5 replaces it with the Tick's own input (spec D7).
+    /// </summary>
+    public void OnSpawn()
     {
         CheckInput();
     }
@@ -252,12 +257,10 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
         flyLayer = 1 << LayerMask.NameToLayer("Fly");
     }
 
-    void OnEnable()
-    {
-        SimulationDriver.Register(this);
-    }
-
-    void OnDisable()
+    // The pool registers each Character once, at creation, in Slot order, and it stays
+    // registered while dead (the driver skips inactive objects). Unregister only when the
+    // scene ends.
+    void OnDestroy()
     {
         SimulationDriver.Unregister(this);
     }
@@ -270,7 +273,8 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
         }
         else
         {
-            if (GameController.State == GameState.RoundFinished && !IsWinningPlayer())
+            // HasInstance: a pooled Character can Spawn in a test with no GameController.
+            if (GameController.HasInstance && GameController.State == GameState.RoundFinished && !IsWinningPlayer())
                 InputReader.ClearInputState(input);
             else
                 InputReader.GetInput(player.inputDevice, input);
@@ -423,7 +427,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
             WallSliding = wallSlidingValue;
             WallSlideSide = (EffectsController.Side)wallSlideSideValue;
             IngestedFly = ingestedFlyValue;
-            ingestingFly = hasFly ? Fly.Active : null;
+            ingestingFly = hasFly ? SimWorld.Fly : null;
         }
     }
 
@@ -558,9 +562,9 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
             if (IngestedFly)
             {
                 ingestingFly.Release();
-                Destroy(ingestingFly.gameObject);
+                SimWorld.Flies.Despawn(0);
             }
-            Destroy(gameObject);
+            SimWorld.Characters.Despawn(player.sortPriority);
         }
     }
 
@@ -1035,7 +1039,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
             IngestedFly = false;
             ingestingFly.transform.position = Center;
             ingestingFly.Release();
-            ingestingFly.gameObject.SetActive(true);
+            ingestingFly.Show();
         }
         if (ingestingFly != null)
         {
@@ -1623,7 +1627,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput
                     tongueDelayLeft = 0.65f;
                     IngestedFly = true;
                     ingestingFly.Release();
-                    ingestingFly.gameObject.SetActive(false);
+                    ingestingFly.Hide();
                 }
             }
         }

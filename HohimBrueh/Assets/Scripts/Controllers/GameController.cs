@@ -33,7 +33,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
     public Character characterPrefab;
 
-    public Fly flyPrefab, activeFly; // sim-state: exclude activeFly is replaced by the fly pool in P3 (spec D5); flyPrefab is config
+    public Fly flyPrefab;
 
     float flySpawnDelay;
 
@@ -88,6 +88,11 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         }
         playerScoreDisplays = new List<PlayerScoreDisplay>();
         instance = this;
+
+        // Register before the pools exist, so GameController ticks first and the pooled
+        // Characters and fly follow in slot order (spec D6). OnEnable registers again, which
+        // does nothing.
+        SimulationDriver.Register(this);
 
         // A round is a self-contained simulation: it starts at tick 0 when its scene loads.
         // Without this the tick kept counting across scenes, so a round's state (the fly's
@@ -163,6 +168,11 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
             }
         }
 
+        // The Round's simulated objects: six Characters, one per Slot, and the fly. Created
+        // once here and reused; nothing creates or destroys them during the Round (spec D5).
+        // After the Players, because each Character gets its Slot's Player.
+        SimWorld.CreatePools(characterPrefab, flyPrefab);
+
         if (isShowDown)
             foreach (var psd in playerScoreDisplays)
             {
@@ -224,6 +234,12 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         SimulationDriver.Unregister(this);
     }
 
+    void OnDestroy()
+    {
+        if (instance == this)
+            SimWorld.Clear();
+    }
+
     /// <summary>
     /// Match flow for one round. This is the simulation part of GameController (SMA-23).
     ///
@@ -246,13 +262,13 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         {
             ApplyPendingJoins();
 
-            if (activeFly == null && !isShowDown)
+            if (SimWorld.Flies != null && !SimWorld.Flies.IsAlive(0) && !isShowDown)
             {
                 if (flySpawnDelay > 0f)
                 {
                     flySpawnDelay -= deltaTime;
                     if (flySpawnDelay <= 0f)
-                        activeFly = Instantiate(flyPrefab, Terrain.GetFlySpawnPoint(), Quaternion.identity);
+                        SimWorld.Flies.Spawn(0, Terrain.GetFlySpawnPoint());
                 }
                 else
                 {
@@ -361,8 +377,9 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
             if (!inactivePlayers.Contains(player))
                 continue;
 
-            // sim-guard: allow player colour is cosmetic
-            player.color = playerColors[Random.Range(0, playerColors.Length)];
+            // A drop-in Player keeps the colour it already has: its Slot's colour, or the one
+            // it picked on the join screen. It used to be random; keeping it makes the join
+            // fully deterministic (spec D8).
             AddPlayer(player);
             inactivePlayers.Remove(player);
         }
@@ -449,15 +466,10 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
             ArrangeScoreboards();
 
-            // Drop-in joins are read in SampleInput and applied in SimulateTick.
-            if (!isShowDown)
-            {
-                // sim-guard: allow debug key (spawn a frog with no player); not used in a real match
-                if (Input.GetKeyDown(KeyCode.F2))
-                {
-                    SpawnCharacter(null);
-                }
-            }
+            // Drop-in joins are read in SampleInput and applied in SimulateTick. The F2 key that
+            // spawned a frog with no Player is gone: a Character with no Player has no Slot, so
+            // it does not fit the pools (spec D17).
+            ReconcileScoreboard();
 
             // sim-guard: allow leaves the match for the title screen; not simulation
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -468,6 +480,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         else if (state == GameState.RoundFinished)
         {
             // The winner's respawn and the end of the round are in SimulateTick.
+            ReconcileScoreboard();
             ArrangeScoreboards();
         }
 
@@ -578,32 +591,69 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         }
     }
 
+    /// <summary>
+    /// Adds a Player to the roster, kept in Slot order so the simulation always processes
+    /// Players in the same order. The scoreboard follows in ReconcileScoreboard.
+    /// </summary>
     void AddPlayer(Player player)
     {
-        activePlayers.Add(player);
+        int index = 0;
+        while (index < activePlayers.Count && activePlayers[index].sortPriority < player.sortPriority)
+            index++;
+        activePlayers.Insert(index, player);
+    }
 
-        var psd = Instantiate(scoreDisplayPrefab, scoreCanvas.transform) as PlayerScoreDisplay;
-        psd.player = player;
-        psd.color = player.color;
-        psd.text.color = player.color;
-        playerScoreDisplays.Add(psd);
+    /// <summary>
+    /// Makes the per-Player scoreboard match the roster: a display for each Player in it,
+    /// and none for a Player who is not (spec D11). The scoreboard is view and follows
+    /// Simulation State, so after a Rollback past a join it corrects itself. Free-for-all
+    /// only: team mode shows two team displays instead, and Showdown hides the scoreboard.
+    /// </summary>
+    void ReconcileScoreboard()
+    {
+        if (isTeamMode || isShowDown || scoreDisplayPrefab == null)
+            return;
 
+        for (int i = playerScoreDisplays.Count - 1; i >= 0; i--)
+        {
+            var psd = playerScoreDisplays[i];
+            if (psd == redTeamScoreDisplay || psd == blueTeamScoreDisplay)
+                continue;
+            if (!activePlayers.Contains(psd.player))
+            {
+                playerScoreDisplays.RemoveAt(i);
+                Destroy(psd.gameObject);
+            }
+        }
+
+        foreach (var player in activePlayers)
+        {
+            bool hasDisplay = false;
+            foreach (var psd in playerScoreDisplays)
+            {
+                if (psd.player == player && psd != redTeamScoreDisplay && psd != blueTeamScoreDisplay)
+                    hasDisplay = true;
+            }
+            if (hasDisplay)
+                continue;
+
+            var display = Instantiate(scoreDisplayPrefab, scoreCanvas.transform) as PlayerScoreDisplay;
+            display.player = player;
+            display.color = player.color;
+            display.text.color = player.color;
+            playerScoreDisplays.Add(display);
+        }
     }
 
 
     void SpawnCharacter(Player player)
     {
         var point = Terrain.GetSpawnPoint();
-        var ch = Instantiate(characterPrefab, point, Quaternion.identity) as Character;
-        if (player != null)
-        {
-            ch.player = player;
-            player.character = ch;
-            player.spawnDelay = 1f;
+        SimWorld.Characters.Spawn(player.sortPriority, point);
+        player.spawnDelay = 1f;
 
-            EffectsController.CreateSpawnEffects(point + Vector3.up, player.color);
-            SoundController.PlaySoundEffect("CharacterSpawn", 0.4f, point);
-        }
+        EffectsController.CreateSpawnEffects(point + Vector3.up, player.color);
+        SoundController.PlaySoundEffect("CharacterSpawn", 0.4f, point);
     }
 
     public static void SpawnCharacterJoinScreen(Player player)
@@ -611,12 +661,15 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         for (int i = 0; i < instance.joinCanvas.Length; i++)
         {
             if (instance.joinCanvas[i].assignedPlayer == player)
-            {
-                var ch = Instantiate(instance.characterPrefab, Terrain.GetSpawnPoint(i), Quaternion.identity) as Character;
-                ch.player = player;
-                player.character = ch;
-            }
+                SimWorld.Characters.Spawn(player.sortPriority, Terrain.GetSpawnPoint(i));
         }
+    }
+
+    /// <summary>Takes a Player's Character out of play, for a Player who leaves the join screen.</summary>
+    public static void DespawnCharacter(Player player)
+    {
+        if (SimWorld.Characters != null)
+            SimWorld.Characters.Despawn(player.sortPriority);
     }
 
     Player winningPlayer;

@@ -34,6 +34,8 @@ Scripts/Netcode/SimClock.cs
 Scripts/Netcode/SimQuery.cs
 Scripts/Netcode/SimRng.cs
 Scripts/Netcode/StateStream.cs
+Scripts/Netcode/SimPool.cs
+Scripts/Netcode/SimWorld.cs
 
 # The driver is the boundary: the one place that may read the wall clock, and only to
 # decide how many ticks to run. Listed so that each clock read needs an explicit allow.

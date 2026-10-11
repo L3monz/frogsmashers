@@ -2,8 +2,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using FrogSmashers.Netcode;
 
-public class ScorePlum : MonoBehaviour
+public class ScorePlum : MonoBehaviour, ISpawnable
 {
     float displayTimeLeft;
     
@@ -38,6 +39,13 @@ public class ScorePlum : MonoBehaviour
                 text.text = "";
             }
         }
+    }
+
+    /// <summary>Clears a popup left over from the Character's previous life (the Character is pooled, spec D5).</summary>
+    public void OnSpawn()
+    {
+        displayTimeLeft = 0f;
+        text.text = "";
     }
 
     public void ShowText(string text, float time = 2f)

@@ -32,9 +32,32 @@ namespace FrogSmashers.Tests
         [TearDown]
         public void DestroyObjects()
         {
+            SimWorld.Clear();
             foreach (var go in created)
-                UnityEngine.Object.DestroyImmediate(go);
+                if (go != null)
+                    UnityEngine.Object.DestroyImmediate(go);
             created.Clear();
+        }
+
+        // Creates the Round's pools from bare stand-in prefabs: six Characters, one per Slot,
+        // each with its Slot's Player, and one fly.
+        private void CreatePools()
+        {
+            SimWorld.CreatePools(Make<Character>(), Make<Fly>());
+            for (int slot = 0; slot < 6; slot++)
+                created.Add(SimWorld.Characters.Get(slot).gameObject);
+            created.Add(SimWorld.Fly.gameObject);
+        }
+
+        private SimPool<Character> MakeCharacterPool()
+        {
+            var pool = new SimPool<Character>(Make<Character>(), 6, "Character");
+            for (int slot = 0; slot < 6; slot++)
+            {
+                pool.Get(slot).player = Player.BySlot(slot);
+                created.Add(pool.Get(slot).gameObject);
+            }
+            return pool;
         }
 
         private T Make<T>() where T : Component
@@ -86,15 +109,7 @@ namespace FrogSmashers.Tests
             return stream.EndDescribe();
         }
 
-        // Unity does not call Awake on components added in EditMode tests. Fly.Awake registers
-        // the fly that a Character's reference resolves to.
-        private Fly MakeActiveFly()
-        {
-            var fly = Make<Fly>();
-            typeof(Fly).GetMethod("Awake", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                .Invoke(fly, null);
-            return fly;
-        }
+
 
         // ---------------------------------------------------------------- StateStream itself
 
@@ -183,24 +198,21 @@ namespace FrogSmashers.Tests
         [Test]
         public void CharacterRoundTrips()
         {
-            MakeActiveFly();
-            var a = Make<Character>();
-            var b = Make<Character>();
-            var fresh = Make<Character>();
+            CreatePools();
+            var a = SimWorld.Characters.Get(0);
+            var b = SimWorld.Characters.Get(1);
+            var fresh = SimWorld.Characters.Get(2);
             AssertRoundTrip(a.SyncState, b.SyncState, fresh.SyncState);
         }
 
         [Test]
         public void FlyRoundTrips()
         {
-            // A reference to a Character is saved as its Player's Slot, so each Character
-            // needs its Player, as it has in the game.
+            // A reference to a Character is saved as its Player's Slot, and a Player only has
+            // a Character while it is alive, so spawn all six.
+            CreatePools();
             for (int slot = 0; slot < 6; slot++)
-            {
-                var character = Make<Character>();
-                character.player = Player.BySlot(slot);
-                Player.BySlot(slot).character = character;
-            }
+                SimWorld.Characters.Spawn(slot, Vector3.zero);
 
             var a = Make<Fly>();
             var b = Make<Fly>();
@@ -229,7 +241,8 @@ namespace FrogSmashers.Tests
         [Test]
         public void DescribeNamesEveryCharacterField()
         {
-            var character = Make<Character>();
+            CreatePools();
+            var character = SimWorld.Characters.Get(0);
             byte[] bytes = Write(character.SyncState);
 
             stream.BeginDescribe(bytes);
@@ -243,6 +256,93 @@ namespace FrogSmashers.Tests
             Assert.That(names, Has.Member("Character[0].input.wasAButton"));
             Assert.That(names, Has.Member("Character[0].lastHitByPlayer"));
             Assert.That(names, Has.Member("Character[0].tongueState"));
+        }
+    
+        // ------------------------------------------------------------------------- the pools
+
+        [Test]
+        public void PoolRoundTrips()
+        {
+            CreatePools();
+            var a = SimWorld.Characters;
+            var b = MakeCharacterPool();
+            var fresh = MakeCharacterPool();
+            AssertRoundTrip(a.SyncState, b.SyncState, fresh.SyncState);
+        }
+
+        [Test]
+        public void SpawnResetsTheObjectToItsStartingState()
+        {
+            CreatePools();
+            var pool = SimWorld.Characters;
+            var position = new Vector3(3f, -2f, 0f);
+
+            var character = pool.Spawn(0, position);
+            byte[] firstLife = Write(character.SyncState);
+
+            stream.BeginFill(seed: 99);
+            character.SyncState(stream);
+            pool.Despawn(0);
+            pool.Spawn(0, position);
+            byte[] secondLife = Write(character.SyncState);
+
+            Assert.That(secondLife, Is.EqualTo(firstLife), "a second life must start exactly like the first");
+        }
+
+        [Test]
+        public void SpawnAndDespawnChangeWhoIsInPlay()
+        {
+            CreatePools();
+            var pool = SimWorld.Characters;
+            var player = Player.BySlot(3);
+
+            Assert.That(player.character, Is.Null, "nobody is alive before the first Spawn");
+
+            var character = pool.Spawn(3, Vector3.zero);
+            Assert.That(pool.IsAlive(3), Is.True);
+            Assert.That(character.gameObject.activeSelf, Is.True);
+            Assert.That(player.character, Is.SameAs(character), "a Player's Character is the pooled one in its Slot");
+
+            pool.Despawn(3);
+            Assert.That(pool.IsAlive(3), Is.False);
+            Assert.That(character.gameObject.activeSelf, Is.False);
+            Assert.That(player.character, Is.Null);
+        }
+
+        [Test]
+        public void LoadingRestoresWhoIsInPlay()
+        {
+            CreatePools();
+            var pool = SimWorld.Characters;
+            pool.Spawn(2, Vector3.zero);
+            byte[] saved = Write(pool.SyncState);
+
+            pool.Despawn(2);
+            pool.Spawn(4, Vector3.zero);
+            Read(saved, pool.SyncState);
+
+            Assert.That(pool.IsAlive(2), Is.True);
+            Assert.That(pool.Get(2).gameObject.activeSelf, Is.True);
+            Assert.That(pool.IsAlive(4), Is.False);
+            Assert.That(pool.Get(4).gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void ASwallowedFlyStaysAliveButInactive()
+        {
+            CreatePools();
+            var flies = SimWorld.Flies;
+            var fly = flies.Spawn(0, Vector3.zero);
+
+            fly.Hide();
+            Assert.That(flies.IsAlive(0), Is.True);
+            Assert.That(fly.gameObject.activeSelf, Is.False);
+
+            byte[] saved = Write(flies.SyncState);
+            fly.Show();
+            Read(saved, flies.SyncState);
+            Assert.That(fly.Hidden, Is.True);
+            Assert.That(fly.gameObject.activeSelf, Is.False, "a load keeps a hidden fly inactive");
         }
     }
 }
