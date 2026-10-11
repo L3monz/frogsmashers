@@ -1839,10 +1839,6 @@ Prefab:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 11433922, guid: 7a34a9b4c4286ab44bb045c593c8dfda, type: 2}
-      propertyPath: sounds.Array.size
-      value: 35
-      objectReference: {fileID: 0}
-    - target: {fileID: 11433922, guid: 7a34a9b4c4286ab44bb045c593c8dfda, type: 2}
       propertyPath: sounds.Array.data[34].clips.Array.size
       value: 3
       objectReference: {fileID: 0}

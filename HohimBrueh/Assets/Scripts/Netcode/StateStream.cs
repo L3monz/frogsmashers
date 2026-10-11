@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Hindsight.Core;
 using UnityEngine;
 
 namespace FrogSmashers.Netcode
@@ -30,9 +31,9 @@ namespace FrogSmashers.Netcode
     ///   only <c>if (s.IsReading)</c>.
     ///
     /// The format is little-endian bytes written by hand, so it is the same on every machine.
-    /// Floats keep their exact IEEE 754 bits. Write reuses one buffer; only the array that
-    /// <see cref="EndWrite"/> returns is a new allocation. Read and Describe allocate nothing
-    /// except Describe's list.
+    /// Floats keep their exact IEEE 754 bits. Write reuses one buffer. Ending a write into a
+    /// <see cref="StateBuffer"/> allocates nothing; the overload that returns an array
+    /// allocates it. Read allocates nothing; Describe allocates its list.
     /// </summary>
     public sealed class StateStream
     {
@@ -49,6 +50,7 @@ namespace FrogSmashers.Netcode
 
         private byte[] buffer = new byte[4096];
         private byte[] source;
+        private int sourceLength;
         private int position;
         private int fillCounter;
         private string section = "";
@@ -69,7 +71,7 @@ namespace FrogSmashers.Netcode
             section = "";
         }
 
-        /// <summary>Returns the Saved State written since <see cref="BeginWrite"/>.</summary>
+        /// <summary>Returns the Saved State written since <see cref="BeginWrite"/>, as a new array.</summary>
         public byte[] EndWrite()
         {
             var result = new byte[position];
@@ -77,10 +79,23 @@ namespace FrogSmashers.Netcode
             return result;
         }
 
+        /// <summary>Appends the Saved State written since <see cref="BeginWrite"/> to <paramref name="into"/>.</summary>
+        public void EndWrite(StateBuffer into)
+        {
+            into.Write(buffer, 0, position);
+        }
+
         public void BeginRead(byte[] state)
+        {
+            BeginRead(state, state.Length);
+        }
+
+        /// <summary>Reads the first <paramref name="length"/> bytes of <paramref name="state"/>.</summary>
+        public void BeginRead(byte[] state, int length)
         {
             CurrentMode = Mode.Read;
             source = state;
+            sourceLength = length;
             position = 0;
             section = "";
         }
@@ -92,9 +107,9 @@ namespace FrogSmashers.Netcode
         /// </summary>
         public void EndRead()
         {
-            if (position != source.Length)
+            if (position != sourceLength)
                 throw new InvalidOperationException(
-                    "Saved State layout mismatch: read " + position + " of " + source.Length + " bytes.");
+                    "Saved State layout mismatch: read " + position + " of " + sourceLength + " bytes.");
             source = null;
         }
 
@@ -102,6 +117,7 @@ namespace FrogSmashers.Netcode
         {
             CurrentMode = Mode.Describe;
             source = state;
+            sourceLength = state.Length;
             position = 0;
             section = "";
             described = new List<KeyValuePair<string, string>>();
@@ -210,17 +226,21 @@ namespace FrogSmashers.Netcode
             }
         }
 
+        // The component paths ("position.x") are only used to describe a state. Building them
+        // on every save and load made a few dozen strings of garbage per Saved State.
         public void Vector2(string name, ref Vector2 value)
         {
-            Float(name + ".x", ref value.x);
-            Float(name + ".y", ref value.y);
+            bool describing = CurrentMode == Mode.Describe;
+            Float(describing ? name + ".x" : name, ref value.x);
+            Float(describing ? name + ".y" : name, ref value.y);
         }
 
         public void Vector3(string name, ref Vector3 value)
         {
-            Float(name + ".x", ref value.x);
-            Float(name + ".y", ref value.y);
-            Float(name + ".z", ref value.z);
+            bool describing = CurrentMode == Mode.Describe;
+            Float(describing ? name + ".x" : name, ref value.x);
+            Float(describing ? name + ".y" : name, ref value.y);
+            Float(describing ? name + ".z" : name, ref value.z);
         }
 
         private void Put(int value, int bytes)
@@ -233,9 +253,9 @@ namespace FrogSmashers.Netcode
 
         private ulong Take(int bytes)
         {
-            if (position + bytes > source.Length)
+            if (position + bytes > sourceLength)
                 throw new InvalidOperationException(
-                    "Saved State layout mismatch: read past the end of " + source.Length + " bytes.");
+                    "Saved State layout mismatch: read past the end of " + sourceLength + " bytes.");
             ulong value = 0;
             for (int i = 0; i < bytes; i++)
                 value |= (ulong)source[position++] << (8 * i);

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FrogSmashers.Netcode;
+using Hindsight.Core;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -52,6 +53,86 @@ namespace FrogSmashers.Tests
             created.Clear();
         }
 
+        private byte[] Save()
+        {
+            var buffer = new StateBuffer();
+            simulation.SaveState(buffer);
+            return buffer.ToArray();
+        }
+
+        private void Load(byte[] saved)
+        {
+            var buffer = new StateBuffer();
+            buffer.Write(saved, 0, saved.Length);
+            simulation.LoadState(buffer);
+        }
+
+        [Test]
+        public void SavingIntoAReusedBufferMatchesAFreshOne()
+        {
+            GameController.activePlayers.Add(players[2]);
+            SimWorld.Characters.Spawn(2, new Vector3(1f, 2f, 0f));
+            var reused = new StateBuffer(initialCapacity: 8);
+            reused.Write(new byte[64], 0, 64);
+            reused.Clear();
+
+            simulation.SaveState(reused);
+
+            Assert.That(reused.ToArray(), Is.EqualTo(Save()));
+        }
+
+        [Test]
+        public void LoadingReadsOnlyTheStateBytes()
+        {
+            SimClock.SeekTo(77);
+            var buffer = new StateBuffer(initialCapacity: 1 << 16);
+            simulation.SaveState(buffer);
+            SimClock.SeekTo(5);
+
+            simulation.LoadState(buffer);
+
+            Assert.That(SimClock.Tick, Is.EqualTo(77), "a buffer longer than its state must load cleanly");
+        }
+
+        [Test]
+        public void SavingAndLoadingAllocateNothing()
+        {
+            GameController.activePlayers.Add(players[0]);
+            GameController.activePlayers.Add(players[1]);
+            SimWorld.Characters.Spawn(0, new Vector3(1f, 2f, 0f));
+            SimWorld.Characters.Spawn(1, new Vector3(-1f, 2f, 0f));
+            SimWorld.Flies.Spawn(0, new Vector3(0f, 5f, 0f));
+            var buffer = new StateBuffer();
+            simulation.SaveState(buffer);
+            simulation.LoadState(buffer);
+
+            // The editor does not allow switching the collector off, so collect first, and
+            // measure again if a collection ran during the loops (it would hide allocations).
+            long saveBytes = 0, loadBytes = 0;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                System.GC.Collect();
+                int collections = System.GC.CollectionCount(0);
+                long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+                for (int i = 0; i < 50; i++)
+                {
+                    buffer.Clear();
+                    simulation.SaveState(buffer);
+                }
+                long mid = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+                for (int i = 0; i < 50; i++)
+                    simulation.LoadState(buffer);
+                long after = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+                saveBytes = mid - before;
+                loadBytes = after - mid;
+                if (System.GC.CollectionCount(0) == collections)
+                    break;
+            }
+
+            Assert.That(saveBytes + loadBytes, Is.LessThan(1024),
+                "50 saves allocated " + saveBytes + " bytes; 50 loads allocated " + loadBytes + " bytes; state is " + buffer.Length + " bytes");
+        }
+
         [Test]
         public void LoadingRestoresTheWholeRound()
         {
@@ -63,7 +144,7 @@ namespace FrogSmashers.Tests
             SimWorld.Flies.Spawn(0, new Vector3(0f, 6f, 0f));
             SimClock.SeekTo(123);
             SimRng.Seed(42);
-            byte[] saved = simulation.SaveState();
+            byte[] saved = Save();
 
             // Change everything a Rollback would have to undo.
             GameController.activePlayers.Remove(players[3]);
@@ -76,9 +157,9 @@ namespace FrogSmashers.Tests
             SimClock.SeekTo(999);
             SimRng.Range(0f, 1f);
 
-            simulation.LoadState(saved);
+            Load(saved);
 
-            Assert.That(simulation.SaveState(), Is.EqualTo(saved), "a load must restore every byte");
+            Assert.That(Save(), Is.EqualTo(saved), "a load must restore every byte");
             Assert.That(SimClock.Tick, Is.EqualTo(123));
             Assert.That(players[1].score, Is.EqualTo(4));
             Assert.That(GameController.activePlayers, Is.EqualTo(new[] { players[1], players[3] }));
@@ -93,10 +174,10 @@ namespace FrogSmashers.Tests
         {
             GameController.activePlayers.Add(players[4]);
             GameController.activePlayers.Add(players[0]);
-            byte[] saved = simulation.SaveState();
+            byte[] saved = Save();
 
             GameController.activePlayers.Clear();
-            simulation.LoadState(saved);
+            Load(saved);
 
             Assert.That(GameController.activePlayers, Is.EqualTo(new[] { players[0], players[4] }));
         }
@@ -105,10 +186,10 @@ namespace FrogSmashers.Tests
         public void TheRandomStreamIsPartOfTheSavedState()
         {
             SimRng.Seed(7);
-            byte[] saved = simulation.SaveState();
+            byte[] saved = Save();
             float first = SimRng.Range(0f, 1f);
 
-            simulation.LoadState(saved);
+            Load(saved);
 
             Assert.That(SimRng.Range(0f, 1f), Is.EqualTo(first), "after a load the stream repeats the same draws");
         }
@@ -116,7 +197,7 @@ namespace FrogSmashers.Tests
         [Test]
         public void DescribeNamesEverySection()
         {
-            var names = simulation.Describe(simulation.SaveState()).Select(p => p.Key).ToList();
+            var names = simulation.Describe(Save()).Select(p => p.Key).ToList();
 
             Assert.That(names, Is.Unique);
             Assert.That(names, Has.Member("Global.tick"));

@@ -54,20 +54,19 @@ namespace FrogSmashers.Netcode
         /// </summary>
         public static long TotalSaveLoadAllocatedBytes { get; private set; }
 
-        public byte[] SaveState()
+        public void SaveState(StateBuffer state)
         {
             long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             stream.BeginWrite();
             SyncAll(stream);
-            var bytes = stream.EndWrite();
+            stream.EndWrite(state);
             TotalSaveLoadAllocatedBytes += System.Math.Max(0, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - before);
-            return bytes;
         }
 
-        public void LoadState(byte[] state)
+        public void LoadState(StateBuffer state)
         {
             long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
-            stream.BeginRead(state);
+            stream.BeginRead(state.Data, state.Length);
             SyncAll(stream);
             stream.EndRead();
             TotalSaveLoadAllocatedBytes += System.Math.Max(0, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - before);

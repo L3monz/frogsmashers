@@ -229,6 +229,12 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
 
     int terrainLayer, characterLayer, groundLayer, flyLayer; // sim-state: exclude set in Awake from layer names
 
+    // Result buffers for the hit checks, one per call site (see SimQuery). Scratch space that a
+    // query fills and the same Tick reads; nothing in them carries over to the next Tick.
+    static readonly RaycastHit2D[] attackHits = new RaycastHit2D[SimQuery.BufferSize]; // sim-state: exclude scratch buffer, filled and read within one query
+    static readonly Collider2D[] bounceHits = new Collider2D[SimQuery.BufferSize]; // sim-state: exclude scratch buffer, filled and read within one query
+    static readonly Collider2D[] tongueHits = new Collider2D[SimQuery.BufferSize]; // sim-state: exclude scratch buffer, filled and read within one query
+
     public bool RecoveringFromBounce
     {
         get
@@ -616,7 +622,6 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
             attackTimeLeft -= t;
             if (attackTimeLeft <= 0f)
             {
-                RaycastHit2D[] hits;
                 Vector2 attackOffset = Vector2.up;
                 float rangeBonus = 0f;
                 if (attackChargeM > 0.5f)
@@ -624,15 +629,14 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
                 float radius = 1.25f;
                 if (attackDir.y < 0f)
                     radius = 1.75f;
-                hits = Physics2D.CircleCastAll((Vector2)transform.position + attackOffset, radius, attackDir, attackRange + rangeBonus, characterLayer);
-                SimQuery.SortBySlot(hits);
+                int hitCount = SimQuery.CircleCast((Vector2)transform.position + attackOffset, radius, attackDir, attackRange + rangeBonus, characterLayer, attackHits);
                 Debug.DrawLine(transform.position + (Vector3)attackOffset, transform.position + (Vector3)attackOffset + (Vector3)attackDir.normalized * (attackRange + rangeBonus + radius), Color.red, 1f);
 
-                if (hits.Length > 0)
+                if (hitCount > 0)
                 {
-                    for (int i = 0; i < hits.Length; i++)
+                    for (int i = 0; i < hitCount; i++)
                     {
-                        var hitChar = hits[i].collider.gameObject.GetComponent<Character>();
+                        var hitChar = attackHits[i].collider.gameObject.GetComponent<Character>();
                         if (hitChar != null && hitChar != this)
                         {
                             //Debug.Break();
@@ -1096,14 +1100,13 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
 
         if (GameController.charactersBounceEachOther && !GameController.isTeamMode && !hasBounceDodged && hitsTaken >= 1 && !OnGround)
         {
-            var cols = Physics2D.OverlapCircleAll((Vector2)transform.position + Vector2.up * height * 0.5f, 0.5f, characterLayer);
-            SimQuery.SortBySlot(cols);
+            int colCount = SimQuery.OverlapCircle((Vector2)transform.position + Vector2.up * height * 0.5f, 0.5f, characterLayer, bounceHits);
             {
-                if (cols.Length > 0)
+                if (colCount > 0)
                 {
-                    foreach (var col in cols)
+                    for (int c = 0; c < colCount; c++)
                     {
-                        var chr = col.GetComponent<Character>();
+                        var chr = bounceHits[c].GetComponent<Character>();
                         if (chr != null && chr != this && chr.state != CharacterState.Bouncing && chr.player != lastHitByPlayer && !(chr.state == CharacterState.Attacking && chr.attackState == AttackState.Attacking))
                         {
                             if (!RecoveringFromBounce || !GameController.onlyBounceBeforeRecover)
@@ -1486,14 +1489,13 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
                     }
                     if (!hitTongue)
                     {
-                        var cols = Physics2D.OverlapCircleAll((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, characterLayer);
-                        SimQuery.SortBySlot(cols);
+                        int colCount = SimQuery.OverlapCircle((Vector2)transform.position + tongueOrigin + tongueDir * tongueDistance, 1f, characterLayer, tongueHits);
                         {
-                            if (cols.Length > 0)
+                            if (colCount > 0)
                             {
-                                foreach (var col in cols)
+                                for (int c = 0; c < colCount; c++)
                                 {
-                                    var chr = col.GetComponent<Character>();
+                                    var chr = tongueHits[c].GetComponent<Character>();
                                     if (chr != null && chr != this)
                                     {
                                         if (!GameController.isTeamMode || (chr.player.team != player.team))

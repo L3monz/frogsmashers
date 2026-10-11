@@ -91,7 +91,8 @@ namespace FrogSmashers.Netcode
             SimulationDriver.DesyncReported += OnDesync;
             Log("session start, unityVersion=" + Application.unityVersion
                 + " vSyncCount=" + QualitySettings.vSyncCount
-                + " targetFrameRate=" + Application.targetFrameRate);
+                + " targetFrameRate=" + Application.targetFrameRate
+                + " incrementalGC=" + UnityEngine.Scripting.GarbageCollector.isIncremental);
             LogGamepads("at start");
             UnityEngine.InputSystem.InputSystem.onDeviceChange += OnDeviceChange;
         }
