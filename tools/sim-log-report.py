@@ -218,6 +218,13 @@ def main():
     else:
         print("  no Sync Test seconds recorded")
 
+    print("\n== Replay check (target: every replay PASS, at a different cap than recorded)")
+    replay_lines = [l for l in lines if re.search(r"\[SIM\] (recording saved|recording not saved|replay )", l)]
+    for line in replay_lines:
+        print("  " + line.split("[SIM] ", 1)[1].strip())
+    if not replay_lines:
+        print("  no recordings or replays in this log")
+
     print("\n== Garbage (target: near-zero allocation per Tick; no frequent collections)")
     gc_rows = collections.defaultdict(lambda: [0, 0, 0, 0, 0, 0.0])  # seconds, collections, total, tick, save, fps
     where = "editor"

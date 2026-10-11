@@ -17,13 +17,13 @@ public class Player
 
     public FreeLives.InputReader.Device inputDevice; // sim-state: exclude Round Setup, set by the constructor
 
-    public Team team;
+    public Team team; // sim-state: exclude Round Setup, fixed for the whole Round
 
     public Color color; // sim-state: exclude cosmetic
 
     public int score;
 
-    public int roundWins;
+    public int roundWins; // sim-state: exclude Match total, changed between Rounds
 
     public SpriteRenderer offscreenDot; // sim-state: exclude view
 

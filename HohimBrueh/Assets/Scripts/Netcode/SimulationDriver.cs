@@ -171,9 +171,14 @@ namespace FrogSmashers.Netcode
             // online play, the peers agree on the seed before the Round starts.
             // sim-guard: allow offline seed, read once before the first Tick of the Round
             RoundSeed = (ulong)DateTime.UtcNow.Ticks;
+            if (isRound)
+                RoundSeed = ReplayCheck.SeedForRound(RoundSeed);
             SimRng.Seed(RoundSeed);
+            if (isRound)
+                ReplayCheck.BeginRound(simulation, RoundSeed);
 
-            if (isRound && NextRoundMode == Mode.SyncTest)
+            // A replay runs Direct: it checks the frame rate, and Sync Test is a separate check.
+            if (isRound && NextRoundMode == Mode.SyncTest && !ReplayCheck.IsReplaying)
             {
                 var config = new RollbackConfig(playerCount: 6) { MaxPredictionFrames = SyncTestDistance };
                 instance.session = new SyncTestSession<FrogInput>(config, simulation, SyncTestDistance);
@@ -194,7 +199,21 @@ namespace FrogSmashers.Netcode
         {
             if (instance == null || instance.simulation != simulation)
                 return;
+            ReplayCheck.EndRound();
             instance.simulation = null;
+            instance.session = null;
+        }
+
+        /// <summary>
+        /// Runs no more Ticks in the current scene, before a development tool changes scene
+        /// (the replay check). Changing Round Setup under a scene that still ticks would change
+        /// its last Ticks.
+        /// </summary>
+        public static void HaltCurrentScene()
+        {
+            if (instance == null)
+                return;
+            instance.roundEnded = true;
             instance.session = null;
         }
 
@@ -253,7 +272,8 @@ namespace FrogSmashers.Netcode
         /// </summary>
         private void AdvanceOneTick()
         {
-            InputSampler.Sample(tickInputs);
+            if (!ReplayCheck.TryGetReplayInputs(tickInputs))
+                InputSampler.Sample(tickInputs);
 
             long heapBefore = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             tickTimer.Reset();
@@ -297,6 +317,13 @@ namespace FrogSmashers.Netcode
 
             if (TickCompleted != null)
                 TickCompleted();
+
+            if (ReplayCheck.AfterTick(simulation, tickInputs, simulation.RoundOver))
+            {
+                roundEnded = true;
+                session = null;
+                return;
+            }
 
             if (simulation.RoundOver && !roundEnded)
             {

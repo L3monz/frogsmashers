@@ -97,21 +97,7 @@ public class GameController : MonoBehaviour, ISimulated
         SimClock.SeekTo(0);
         if (inactivePlayers == null)
         {
-            inactivePlayers = new List<Player>();
-            Player p;
-            p = new Player(FreeLives.InputReader.Device.Gamepad1, playerColors[0], 0);
-            inactivePlayers.Add(p);
-            p = new Player(FreeLives.InputReader.Device.Gamepad2, playerColors[1], 1);
-            inactivePlayers.Add(p);
-            p = new Player(FreeLives.InputReader.Device.Gamepad3, playerColors[2], 2);
-            inactivePlayers.Add(p);
-            p = new Player(FreeLives.InputReader.Device.Gamepad4, playerColors[3], 3);
-            inactivePlayers.Add(p);
-            p = new Player(FreeLives.InputReader.Device.Keyboard1, playerColors[4], 4);
-            inactivePlayers.Add(p);
-            p = new Player(FreeLives.InputReader.Device.Keyboard2, playerColors[5], 5);
-            inactivePlayers.Add(p);
-
+            CreatePlayers(playerColors);
         }
         else
         {
@@ -180,6 +166,86 @@ public class GameController : MonoBehaviour, ISimulated
             }
 
         InputReader.GetInput(combinedInput);
+    }
+
+    // The input device of each Slot.
+    static readonly InputReader.Device[] SlotDevices =
+    {
+        InputReader.Device.Gamepad1, InputReader.Device.Gamepad2, InputReader.Device.Gamepad3,
+        InputReader.Device.Gamepad4, InputReader.Device.Keyboard1, InputReader.Device.Keyboard2,
+    };
+
+    /// <summary>Creates the six Players, one per Slot, none of them in the roster yet.</summary>
+    static void CreatePlayers(Color[] colors)
+    {
+        inactivePlayers = new List<Player>();
+        for (int slot = 0; slot < SlotDevices.Length; slot++)
+            inactivePlayers.Add(new Player(SlotDevices[slot], colors[slot], slot));
+    }
+
+    /// <summary>
+    /// Copies the Round Setup of the Round starting in this scene into a recording: the Level,
+    /// the option flags, the roster in order, and each Slot's team, round wins and colour.
+    /// The seed is added by the caller.
+    /// </summary>
+    public static void CaptureRoundSetup(RoundRecording recording)
+    {
+        recording.Level = SceneManager.GetActiveScene().name;
+        recording.TeamMode = isTeamMode;
+        recording.PlayersCanDropIn = playersCanDropIn;
+        recording.ShowDown = isShowDown;
+        recording.CharactersBounceEachOther = charactersBounceEachOther;
+        recording.WeirdBounceTrajectories = weirdBounceTrajectories;
+        recording.OnlyBounceBeforeRecover = onlyBounceBeforeRecover;
+
+        if (recording.Roster.Length != activePlayers.Count)
+            recording.Roster = new int[activePlayers.Count];
+        for (int i = 0; i < activePlayers.Count; i++)
+            recording.Roster[i] = activePlayers[i].sortPriority;
+
+        for (int slot = 0; slot < RoundRecording.Slots; slot++)
+        {
+            var player = Player.BySlot(slot);
+            if (player == null)
+                continue;
+            recording.Teams[slot] = player.team;
+            recording.RoundWins[slot] = player.roundWins;
+            recording.Colors[slot] = player.color;
+        }
+    }
+
+    /// <summary>
+    /// Puts back a recorded Round Setup before the recorded Level loads, so the Round starts
+    /// exactly as it did. Creates the Players if no join screen has run in this session.
+    /// </summary>
+    public static void RestoreRoundSetup(RoundRecording recording)
+    {
+        isTeamMode = recording.TeamMode;
+        playersCanDropIn = recording.PlayersCanDropIn;
+        isShowDown = recording.ShowDown;
+        charactersBounceEachOther = recording.CharactersBounceEachOther;
+        weirdBounceTrajectories = recording.WeirdBounceTrajectories;
+        onlyBounceBeforeRecover = recording.OnlyBounceBeforeRecover;
+
+        if (inactivePlayers == null)
+            CreatePlayers(recording.Colors);
+
+        activePlayers.Clear();
+        inactivePlayers.Clear();
+        for (int slot = 0; slot < RoundRecording.Slots; slot++)
+        {
+            var player = Player.BySlot(slot);
+            player.team = recording.Teams[slot];
+            player.roundWins = recording.RoundWins[slot];
+            player.color = recording.Colors[slot];
+        }
+        foreach (int slot in recording.Roster)
+            activePlayers.Add(Player.BySlot(slot));
+        for (int slot = 0; slot < RoundRecording.Slots; slot++)
+        {
+            if (!activePlayers.Contains(Player.BySlot(slot)))
+                inactivePlayers.Add(Player.BySlot(slot));
+        }
     }
 
     internal static void SetupPlayersForShowdown()

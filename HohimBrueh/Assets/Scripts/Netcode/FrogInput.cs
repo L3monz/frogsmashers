@@ -103,6 +103,23 @@ namespace FrogSmashers.Netcode
             return input;
         }
 
+        /// <summary>The whole input as one 32-bit value, for recordings: X, Y, then the buttons.</summary>
+        public uint ToBits()
+        {
+            return (uint)(byte)XAxis | ((uint)(byte)YAxis << 8) | ((uint)_buttons << 16);
+        }
+
+        /// <summary>The inverse of <see cref="ToBits"/>.</summary>
+        public static FrogInput FromBits(uint bits)
+        {
+            return new FrogInput
+            {
+                XAxis = (sbyte)(byte)(bits & 0xFF),
+                YAxis = (sbyte)(byte)((bits >> 8) & 0xFF),
+                _buttons = (ushort)(bits >> 16),
+            };
+        }
+
         private bool Has(Buttons button) => (_buttons & (ushort)button) != 0;
 
         private void Set(Buttons button, bool pressed)

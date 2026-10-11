@@ -21,6 +21,7 @@ namespace FrogSmashers.Netcode
     /// - The gamepads Unity sees, and each face-button press, to debug controller support.
     ///
     /// F3 cycles a frame-rate cap, so a tester can compare frame rates in one session.
+    /// F10 replays the newest round recording and checks it Tick by Tick (see ReplayCheck).
     ///
     /// This class only reads simulation state. It never changes it. It runs only in the
     /// editor and in development builds. It uses a Dictionary and the wall clock, which
@@ -146,6 +147,8 @@ namespace FrogSmashers.Netcode
                 allocatedThisSecond += heap - lastHeapSize;
             lastHeapSize = heap;
 
+            if (Input.GetKeyDown(KeyCode.F10))
+                ReplayCheck.StartReplayOfNewest();
             if (Input.GetKeyDown(KeyCode.F4))
             {
                 SimulationDriver.ToggleNextRoundMode();
