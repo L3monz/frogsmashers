@@ -24,7 +24,11 @@ if /mnt/c/Windows/System32/tasklist.exe /FI "IMAGENAME eq Unity.exe" 2>/dev/null
   exit 1
 fi
 
-"$DOTNET" build "$(wslpath -w "$HINDSIGHT/Hindsight.sln")" -c Release --nologo -v quiet
+# Only the two libraries the game uses. They target netstandard2.0, which the Windows
+# .NET 6 SDK builds; the solution's test projects target net8.0, which it can't.
+for name in Hindsight.Core Hindsight.Determinism; do
+  "$DOTNET" build "$(wslpath -w "$HINDSIGHT/src/$name/$name.csproj")" -c Release --nologo -v quiet
+done
 
 for name in Hindsight.Core Hindsight.Determinism; do
   src="$HINDSIGHT/src/$name/bin/Release/netstandard2.0/$name.dll"

@@ -68,3 +68,7 @@ DeterminismResults/*-log.txt
 
 # Python bytecode from the tools/ scripts.
 tools/__pycache__/
+
+# Written by the build script for one build and deleted afterwards (the build ID).
+HohimBrueh/Assets/Resources/BuildId.txt
+HohimBrueh/Assets/Resources/BuildId.txt.meta
