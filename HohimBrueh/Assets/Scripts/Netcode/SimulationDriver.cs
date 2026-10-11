@@ -45,6 +45,7 @@ namespace FrogSmashers.Netcode
         private FrogSimulation simulation;
         private SyncTestSession<FrogInput> session;
         private bool roundEnded;
+        private int injectSlot = -1;
 
         // This Tick's input for all six Slots, reused every Tick.
         private readonly FrogInput[] tickInputs = new FrogInput[6];
@@ -191,6 +192,19 @@ namespace FrogSmashers.Netcode
             instance.session = null;
         }
 
+        /// <summary>
+        /// For a development check only (F9): makes the next suitable first-run Frame nudge the
+        /// Character in <paramref name="slot"/>, so the Sync Test reports a Desync. Returns false
+        /// when no Sync Test is running.
+        /// </summary>
+        public static bool RequestInjectedDesync(int slot)
+        {
+            if (instance == null || instance.session == null)
+                return false;
+            instance.injectSlot = slot;
+            return true;
+        }
+
         /// <summary>Switches the mode for the next Round (F4 in development builds).</summary>
         public static void ToggleNextRoundMode()
         {
@@ -239,6 +253,15 @@ namespace FrogSmashers.Netcode
             tickTimer.Start();
             if (session != null)
             {
+                // A nudge in the last Frame of a check window would only change the state after
+                // the window, which this check never compares, and the next window would start
+                // from the nudged state. So wait for any other Frame.
+                if (injectSlot >= 0 && session.FrameCount % SyncTestDistance != SyncTestDistance - 1)
+                {
+                    simulation.InjectDesyncAfterThisFrame(injectSlot);
+                    injectSlot = -1;
+                }
+
                 try
                 {
                     var result = session.AdvanceFrame(tickInputs);
@@ -252,6 +275,7 @@ namespace FrogSmashers.Netcode
                 {
                     ReportDesync(desync);
                     session = null;
+                    injectSlot = -1;
                     CurrentMode = Mode.Direct;
                 }
             }

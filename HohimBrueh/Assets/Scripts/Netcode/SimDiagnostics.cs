@@ -62,6 +62,12 @@ namespace FrogSmashers.Netcode
         private long rollbacksAtLastReport;
         private long rollbackTicksAtLastReport;
         private double tickMillisecondsAtLastReport;
+
+        // Garbage: collections this second, and memory allocated (the growth of the managed
+        // heap between Render Frames, ignoring the drops when the collector runs).
+        private int collectionsAtLastReport;
+        private long lastHeapSize;
+        private long allocatedThisSecond;
         private int framesThisSecond;
         private int dropsAtLastReport;
 
@@ -129,6 +135,14 @@ namespace FrogSmashers.Netcode
             if (Input.GetKeyDown(KeyCode.F3))
                 CycleFrameCap();
 
+            if (Input.GetKeyDown(KeyCode.F9))
+                InjectDesync();
+
+            long heap = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+            if (heap > lastHeapSize)
+                allocatedThisSecond += heap - lastHeapSize;
+            lastHeapSize = heap;
+
             if (Input.GetKeyDown(KeyCode.F4))
             {
                 SimulationDriver.ToggleNextRoundMode();
@@ -167,12 +181,17 @@ namespace FrogSmashers.Netcode
                 rollbackTicksAtLastReport = SimulationDriver.TotalRollbackTicks;
                 tickMillisecondsAtLastReport = SimulationDriver.TotalTickMilliseconds;
                 double msPerTick = ticks > 0 ? tickMilliseconds / ticks : 0.0;
+                int collections = System.GC.CollectionCount(0) - collectionsAtLastReport;
+                collectionsAtLastReport = System.GC.CollectionCount(0);
+                long allocatedKB = allocatedThisSecond / 1024;
+                allocatedThisSecond = 0;
 
                 Log(string.Format(CultureInfo.InvariantCulture,
-                    "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000} mode={8} rollbacks={9} rollbackTicks={10} msPerTick={11:0.000} desyncs={12}",
+                    "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000} mode={8} rollbacks={9} rollbackTicks={10} msPerTick={11:0.000} desyncs={12} gc={13} allocKB={14}",
                     framesThisSecond / secondTimer, ticks, SimClock.Tick, drops,
                     CapLabel(), Time.timeScale, secondTimer, simTimeThisSecond,
-                    SimulationDriver.CurrentMode, rollbacks, rollbackTicks, msPerTick, SimulationDriver.TotalDesyncs));
+                    SimulationDriver.CurrentMode, rollbacks, rollbackTicks, msPerTick, SimulationDriver.TotalDesyncs,
+                    collections, allocatedKB));
 
                 foreach (var player in GameController.activePlayers)
                 {
@@ -192,6 +211,33 @@ namespace FrogSmashers.Netcode
                 secondTimer = 0f;
                 framesThisSecond = 0;
             }
+        }
+
+        /// <summary>
+        /// F9: nudges the first live Character a tiny amount on a first-run Frame. The Sync Test
+        /// must report a Desync naming that Character's position.
+        /// </summary>
+        private void InjectDesync()
+        {
+            var characters = SimWorld.Characters;
+            int slot = -1;
+            for (int i = 0; characters != null && i < characters.Count && slot < 0; i++)
+            {
+                if (characters.IsAlive(i))
+                    slot = i;
+            }
+            if (slot < 0)
+            {
+                Log("injected desync: no live Character to nudge");
+                return;
+            }
+            if (!SimulationDriver.RequestInjectedDesync(slot))
+            {
+                Log("injected desync: needs Sync Test mode");
+                return;
+            }
+            Log("injected desync: nudging Character[" + slot.ToString(CultureInfo.InvariantCulture)
+                + "].position; expect a desync naming it");
         }
 
         private void OnRoundStarted()

@@ -29,6 +29,10 @@ namespace FrogSmashers.Netcode
         private readonly GameController round;
         private readonly StateStream stream = new StateStream();
 
+        // Development check: the Slot of a Character to nudge at the end of the next first-run
+        // Frame, or -1. See InjectDesyncAfterThisFrame.
+        private int nudgeSlot = -1;
+
         public FrogSimulation(GameController round)
         {
             this.round = round;
@@ -86,6 +90,25 @@ namespace FrogSmashers.Netcode
                 flies.Get(0).SimulateTick(dt);
 
             SimClock.Advance();
+
+            // The nudge happens only on the first run of a Frame, never when a Rollback runs it
+            // again. So the replay cannot reproduce it, exactly like a real determinism bug.
+            if (nudgeSlot >= 0 && !SimulationDriver.InRollback)
+            {
+                if (characters != null && characters.IsAlive(nudgeSlot))
+                    characters.Get(nudgeSlot).transform.position += new Vector3(0.001f, 0f, 0f);
+                nudgeSlot = -1;
+            }
+        }
+
+        /// <summary>
+        /// For a development check only: moves a Character by a tiny amount at the end of the
+        /// next first-run Frame. A Sync Test must then report a Desync that names
+        /// Character[slot].position, which proves the checker catches a real one.
+        /// </summary>
+        public void InjectDesyncAfterThisFrame(int slot)
+        {
+            nudgeSlot = slot;
         }
 
         /// <summary>Every field of a Saved State as <c>path = value</c>, in order.</summary>

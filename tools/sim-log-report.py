@@ -36,6 +36,8 @@ SESSION = re.compile(r"\[SIM\] session start")
 SYNC = re.compile(r"mode=(\w+) rollbacks=(\d+) rollbackTicks=(\d+) msPerTick=([\d.]+) desyncs=(\d+)")
 ROUND = re.compile(r"\[SIM\] round start mode=(\w+) seed=(\d+) scene=(\S+)")
 DESYNC = re.compile(r"\[SIM\] desync (.*)")
+GC = re.compile(r"gc=(\d+) allocKB=(\d+)")
+INJECT = re.compile(r"\[SIM\] injected desync: nudging (Character\[\d+\])")
 
 
 def main():
@@ -168,15 +170,60 @@ def main():
         last_desyncs = int(m[5])
     for mode, (secs, rb, rbt, ms) in sorted(per_mode.items()):
         print(f"  {mode:>8}: {secs:4d}s  rollbacks={rb}  rollback ticks={rbt}  avg ms per tick={ms / max(secs, 1):.3f}")
-    desync_lines = [DESYNC.search(l)[1] for l in lines if DESYNC.search(l)]
-    for d in desync_lines[:20]:
-        print(f"  DESYNC {d}")
+    # A desync right after F9 is the checker working; any other desync is a real bug.
+    expected_target = None
+    unexpected, caught, missed = [], [], []
+    for line in lines:
+        inj = INJECT.search(line)
+        if inj:
+            if expected_target:
+                missed.append(expected_target)
+            expected_target = inj[1]
+            continue
+        d = DESYNC.search(line)
+        if not d:
+            continue
+        text = d[1]
+        if text.startswith("tick="):
+            current = {"header": text, "fields": [], "expected": expected_target}
+            (caught if expected_target else unexpected).append(current)
+            expected_target = None
+        elif text.startswith("field ") and (caught or unexpected):
+            (caught + unexpected)[-1]["fields"].append(text[6:])
+    if expected_target:
+        missed.append(expected_target)
+
+    for c in caught:
+        named = any(f.startswith(c["expected"] + ".position") for f in c["fields"])
+        print(f"  injected desync on {c['expected']}: caught ({c['header']}), names the position: {'yes' if named else 'NO'}")
+        for f in c["fields"][:3]:
+            print(f"      {f}")
+    for m in missed:
+        print(f"  injected desync on {m}: NOT caught")
+    for u in unexpected:
+        print(f"  UNEXPECTED DESYNC {u['header']}")
+        for f in u["fields"]:
+            print(f"      {f}")
+
     if "SyncTest" in per_mode:
         rolled = per_mode["SyncTest"][1] > 0
-        print("  RESULT:", "PASS" if rolled and last_desyncs == 0 else
-              ("FAIL (desyncs)" if last_desyncs else "FAIL (no rollbacks recorded)"))
+        ok = rolled and not unexpected
+        reason = "unexpected desyncs" if unexpected else "no rollbacks recorded"
+        print("  RESULT:", "PASS" if ok else f"FAIL ({reason})")
     else:
         print("  no Sync Test seconds recorded")
+
+    print("\n== Garbage (target: no frequent collections in Sync Test)")
+    gc_mode = collections.defaultdict(lambda: [0, 0, 0])  # seconds, collections, KB
+    for line in lines:
+        g, m = GC.search(line), SYNC.search(line)
+        if g and m:
+            acc = gc_mode[m[1]]
+            acc[0] += 1
+            acc[1] += int(g[1])
+            acc[2] += int(g[2])
+    for mode, (secs, gcs, kb) in sorted(gc_mode.items()):
+        print(f"  {mode:>8}: {gcs} collections in {secs}s, about {kb / max(secs, 1):.0f} KB allocated per second")
 
     print("\n== Hits")
     hits = [HIT.search(l) for l in lines]
