@@ -48,18 +48,29 @@ namespace FrogSmashers.Netcode
             get { return round.RoundOver; }
         }
 
+        /// <summary>
+        /// Bytes allocated while saving and loading Saved States, for diagnostics. Measured as
+        /// growth of the managed heap; a collection in between makes it read low, never high.
+        /// </summary>
+        public static long TotalSaveLoadAllocatedBytes { get; private set; }
+
         public byte[] SaveState()
         {
+            long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             stream.BeginWrite();
             SyncAll(stream);
-            return stream.EndWrite();
+            var bytes = stream.EndWrite();
+            TotalSaveLoadAllocatedBytes += System.Math.Max(0, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - before);
+            return bytes;
         }
 
         public void LoadState(byte[] state)
         {
+            long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             stream.BeginRead(state);
             SyncAll(stream);
             stream.EndRead();
+            TotalSaveLoadAllocatedBytes += System.Math.Max(0, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - before);
         }
 
         public void AdvanceFrame(FrogInput[] inputs)

@@ -111,6 +111,12 @@ namespace FrogSmashers.Netcode
         public static double TotalTickMilliseconds { get; private set; }
 
         /// <summary>
+        /// Bytes allocated during Ticks (including Rollbacks and Saved States), for diagnostics.
+        /// Measured as growth of the managed heap; a collection in between makes it read low.
+        /// </summary>
+        public static long TotalTickAllocatedBytes { get; private set; }
+
+        /// <summary>
         /// Creates the driver before any scene loads, so it is there when the first
         /// GameController hands over its simulation. Done in code rather than as a component
         /// in each scene, because a missing component would show up as "the game is frozen"
@@ -249,6 +255,7 @@ namespace FrogSmashers.Netcode
         {
             InputSampler.Sample(tickInputs);
 
+            long heapBefore = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             tickTimer.Reset();
             tickTimer.Start();
             if (session != null)
@@ -285,6 +292,7 @@ namespace FrogSmashers.Netcode
             }
             tickTimer.Stop();
             TotalTickMilliseconds += tickTimer.Elapsed.TotalMilliseconds;
+            TotalTickAllocatedBytes += Math.Max(0, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - heapBefore);
             TotalTicksRun++;
 
             if (TickCompleted != null)

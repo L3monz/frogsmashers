@@ -27,6 +27,8 @@ import re
 import sys
 
 DEFAULT_LOG = "/mnt/c/Users/Lemons/AppData/Local/Unity/Editor/Editor.log"
+# A development build's log. Pass "player" as the path to read it.
+PLAYER_LOG = "/mnt/c/Users/Lemons/AppData/LocalLow/DefaultCompany/Free Lives Template/Player.log"
 
 SECOND = re.compile(r"\[SIM\] second fps=([\d.]+) ticks=(\d+) tick=(\d+) drops=(\d+) cap=(\w+) timeScale=([\d.]+)(?: wall=([\d.]+) sim=([\d.]+))?")
 JUMP = re.compile(r"\[SIM\] jump P(\S+) apex=(\S+) ticks=(\d+) hold=(\d+) clean=(\w+) cap=(\w+)")
@@ -36,12 +38,15 @@ SESSION = re.compile(r"\[SIM\] session start")
 SYNC = re.compile(r"mode=(\w+) rollbacks=(\d+) rollbackTicks=(\d+) msPerTick=([\d.]+) desyncs=(\d+)")
 ROUND = re.compile(r"\[SIM\] round start mode=(\w+) seed=(\d+) scene=(\S+)")
 DESYNC = re.compile(r"\[SIM\] desync (.*)")
-GC = re.compile(r"gc=(\d+) allocKB=(\d+)")
+GC = re.compile(r"gc=(\d+) allocKB=(\d+)(?: tickKB=(\d+) saveKB=(\d+) build=(\w+))?")
+FPS_CAP = re.compile(r"fps=([\d.]+) ticks=(\d+) .*cap=(\w+)")
 INJECT = re.compile(r"\[SIM\] injected desync: nudging (Character\[\d+\])")
 
 
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_LOG
+    if path == "player":
+        path = PLAYER_LOG
     if not os.path.exists(path):
         sys.exit(f"log not found: {path}")
 
@@ -213,17 +218,28 @@ def main():
     else:
         print("  no Sync Test seconds recorded")
 
-    print("\n== Garbage (target: no frequent collections in Sync Test)")
-    gc_mode = collections.defaultdict(lambda: [0, 0, 0])  # seconds, collections, KB
+    print("\n== Garbage (target: near-zero allocation per Tick; no frequent collections)")
+    gc_rows = collections.defaultdict(lambda: [0, 0, 0, 0, 0, 0.0])  # seconds, collections, total, tick, save, fps
+    where = "editor"
     for line in lines:
-        g, m = GC.search(line), SYNC.search(line)
-        if g and m:
-            acc = gc_mode[m[1]]
-            acc[0] += 1
-            acc[1] += int(g[1])
-            acc[2] += int(g[2])
-    for mode, (secs, gcs, kb) in sorted(gc_mode.items()):
-        print(f"  {mode:>8}: {gcs} collections in {secs}s, about {kb / max(secs, 1):.0f} KB allocated per second")
+        g, m, f = GC.search(line), SYNC.search(line), FPS_CAP.search(line)
+        if not (g and m and f) or int(f[2]) == 0:
+            continue
+        if g[5]:
+            where = g[5]
+        acc = gc_rows[(m[1], f[3])]
+        acc[0] += 1
+        acc[1] += int(g[1])
+        acc[2] += int(g[2])
+        acc[3] += int(g[3] or 0)
+        acc[4] += int(g[4] or 0)
+        acc[5] += float(f[1])
+    print(f"  measured in: {where}  (KB per second; 'other' is view code and, in the editor, the editor)")
+    print("      mode   cap   secs   fps  gc/s   total    tick (save)   other   KB/frame")
+    for (mode, cap), (secs, gcs, total, tick, save, fps) in sorted(gc_rows.items()):
+        n = max(secs, 1)
+        other = max(0, total - tick)
+        print(f"  {mode:>8} {cap:>5} {secs:5d} {fps / n:6.1f} {gcs / n:5.2f} {total / n:7.0f} {tick / n:7.0f} ({save / n:4.0f}) {other / n:7.0f} {other / max(fps, 1):8.2f}")
 
     print("\n== Hits")
     hits = [HIT.search(l) for l in lines]

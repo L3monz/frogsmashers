@@ -68,6 +68,8 @@ namespace FrogSmashers.Netcode
         private int collectionsAtLastReport;
         private long lastHeapSize;
         private long allocatedThisSecond;
+        private long tickAllocatedAtLastReport;
+        private long saveLoadAllocatedAtLastReport;
         private int framesThisSecond;
         private int dropsAtLastReport;
 
@@ -185,13 +187,19 @@ namespace FrogSmashers.Netcode
                 collectionsAtLastReport = System.GC.CollectionCount(0);
                 long allocatedKB = allocatedThisSecond / 1024;
                 allocatedThisSecond = 0;
+                // Split: Ticks (simulation, Rollbacks, Saved States) and, inside that, saving and
+                // loading. The rest of allocKB is view code and, in the editor, the editor.
+                long tickKB = (SimulationDriver.TotalTickAllocatedBytes - tickAllocatedAtLastReport) / 1024;
+                long saveKB = (FrogSimulation.TotalSaveLoadAllocatedBytes - saveLoadAllocatedAtLastReport) / 1024;
+                tickAllocatedAtLastReport = SimulationDriver.TotalTickAllocatedBytes;
+                saveLoadAllocatedAtLastReport = FrogSimulation.TotalSaveLoadAllocatedBytes;
 
                 Log(string.Format(CultureInfo.InvariantCulture,
-                    "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000} mode={8} rollbacks={9} rollbackTicks={10} msPerTick={11:0.000} desyncs={12} gc={13} allocKB={14}",
+                    "second fps={0:0.0} ticks={1} tick={2} drops={3} cap={4} timeScale={5} wall={6:0.000} sim={7:0.000} mode={8} rollbacks={9} rollbackTicks={10} msPerTick={11:0.000} desyncs={12} gc={13} allocKB={14} tickKB={15} saveKB={16} build={17}",
                     framesThisSecond / secondTimer, ticks, SimClock.Tick, drops,
                     CapLabel(), Time.timeScale, secondTimer, simTimeThisSecond,
                     SimulationDriver.CurrentMode, rollbacks, rollbackTicks, msPerTick, SimulationDriver.TotalDesyncs,
-                    collections, allocatedKB));
+                    collections, allocatedKB, tickKB, saveKB, Application.isEditor ? "editor" : "player"));
 
                 foreach (var player in GameController.activePlayers)
                 {
