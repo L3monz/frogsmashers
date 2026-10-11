@@ -24,7 +24,7 @@ namespace FrogSmashers.Netcode
     public struct FrogInput : IEquatable<FrogInput>
     {
         [Flags]
-        private enum Buttons : byte
+        private enum Buttons : ushort
         {
             None = 0,
             A = 1 << 0,
@@ -32,6 +32,10 @@ namespace FrogSmashers.Netcode
             X = 1 << 2,
             Y = 1 << 3,
             Start = 1 << 4,
+            Left = 1 << 5,
+            Right = 1 << 6,
+            Up = 1 << 7,
+            Down = 1 << 8,
         }
 
         /// <summary>Stick X, quantised to -127..127.</summary>
@@ -40,22 +44,23 @@ namespace FrogSmashers.Netcode
         /// <summary>Stick Y, quantised to -127..127.</summary>
         public sbyte YAxis;
 
-        private byte _buttons;
+        private ushort _buttons;
 
-        public bool AButton => (_buttons & (byte)Buttons.A) != 0;
-        public bool BButton => (_buttons & (byte)Buttons.B) != 0;
-        public bool XButton => (_buttons & (byte)Buttons.X) != 0;
-        public bool YButton => (_buttons & (byte)Buttons.Y) != 0;
-        public bool Start => (_buttons & (byte)Buttons.Start) != 0;
+        public bool AButton => Has(Buttons.A);
+        public bool BButton => Has(Buttons.B);
+        public bool XButton => Has(Buttons.X);
+        public bool YButton => Has(Buttons.Y);
+        public bool Start => Has(Buttons.Start);
 
-        // The digital directions the game reads are derived from the stick rather than stored
-        // separately, so the two can never disagree after a rollback.
-        private const sbyte DirectionThreshold = 64; // half deflection
-
-        public bool Left => XAxis <= -DirectionThreshold;
-        public bool Right => XAxis >= DirectionThreshold;
-        public bool Down => YAxis <= -DirectionThreshold;
-        public bool Up => YAxis >= DirectionThreshold;
+        // The digital directions are stored as their own bits, exactly as the device reported
+        // them. They used to be derived from the stick axis, which lost one case: on a
+        // keyboard, holding left and right together gives an axis of 0, which read as "left
+        // only", while the original input reported both held, and the movement code checks
+        // them separately. Gamepads already digitise the stick in InputReader (dead zone 0.3).
+        public bool Left => Has(Buttons.Left);
+        public bool Right => Has(Buttons.Right);
+        public bool Up => Has(Buttons.Up);
+        public bool Down => Has(Buttons.Down);
 
         public float X => XAxis / 127f;
         public float Y => YAxis / 127f;
@@ -69,19 +74,10 @@ namespace FrogSmashers.Netcode
                 YAxis = Quantise(state.yAxis),
             };
 
-            // Fall back to the digital d-pad when the stick is centred, so keyboard players
-            // (who have no analog axis at all) still register as holding a direction.
-            if (input.XAxis == 0)
-            {
-                if (state.left) input.XAxis = -127;
-                else if (state.right) input.XAxis = 127;
-            }
-            if (input.YAxis == 0)
-            {
-                if (state.down) input.YAxis = -127;
-                else if (state.up) input.YAxis = 127;
-            }
-
+            input.Set(Buttons.Left, state.left);
+            input.Set(Buttons.Right, state.right);
+            input.Set(Buttons.Up, state.up);
+            input.Set(Buttons.Down, state.down);
             input.Set(Buttons.A, state.aButton);
             input.Set(Buttons.B, state.bButton);
             input.Set(Buttons.X, state.xButton);
@@ -90,10 +86,29 @@ namespace FrogSmashers.Netcode
             return input;
         }
 
+        /// <summary>Builds an input directly. For tests and recorded replays.</summary>
+        public static FrogInput Make(bool left = false, bool right = false, bool up = false, bool down = false,
+            bool a = false, bool b = false, bool x = false, bool y = false, bool start = false)
+        {
+            var input = new FrogInput();
+            input.Set(Buttons.Left, left);
+            input.Set(Buttons.Right, right);
+            input.Set(Buttons.Up, up);
+            input.Set(Buttons.Down, down);
+            input.Set(Buttons.A, a);
+            input.Set(Buttons.B, b);
+            input.Set(Buttons.X, x);
+            input.Set(Buttons.Y, y);
+            input.Set(Buttons.Start, start);
+            return input;
+        }
+
+        private bool Has(Buttons button) => (_buttons & (ushort)button) != 0;
+
         private void Set(Buttons button, bool pressed)
         {
-            if (pressed) _buttons |= (byte)button;
-            else _buttons &= (byte)~(byte)button;
+            if (pressed) _buttons |= (ushort)button;
+            else _buttons &= (ushort)~(ushort)button;
         }
 
         private static sbyte Quantise(float axis)
@@ -108,6 +123,6 @@ namespace FrogSmashers.Netcode
 
         public override int GetHashCode() => (XAxis << 16) ^ (YAxis << 8) ^ _buttons;
 
-        public override string ToString() => $"({XAxis},{YAxis}) buttons={_buttons:X2}";
+        public override string ToString() => $"({XAxis},{YAxis}) buttons={_buttons:X3}";
     }
 }

@@ -30,7 +30,7 @@ public class Fly : MonoBehaviour, ISimulated, ISpawnable, IHideable
     // tick on every machine. Unity calls Start later, from the frame loop, so the draw order
     // would depend on frame timing. Also, a tick can run before Start, and the fly would
     // simulate with no terrain layer and no velocity.
-    // Configuration only. The fly is pooled (spec D5): Awake runs once, on its first
+    // Configuration only. The fly is pooled: Awake runs once, on its first
     // activation, so per-life setup belongs in OnSpawn.
     void Awake()
     {
@@ -159,7 +159,7 @@ public class Fly : MonoBehaviour, ISimulated, ISpawnable, IHideable
         // time a tick gets replayed. SimClock.Elapsed is derived from the tick number instead,
         // so tick N always produces the same bob. SimMath.Sin rather than Mathf.Sin because
         // IEEE 754 doesn't specify sine — platform math libraries disagree in the last bit,
-        // and in a rollback simulation that compounds into a desync (SMA-20).
+        // and in a rollback simulation that compounds into a desync.
         float bob = SimMath.Sin(SimClock.Elapsed * 8f) * 3f;
 
         Vector2 velocityT = velocity * deltaTime + Vector2.up * bob * deltaTime;

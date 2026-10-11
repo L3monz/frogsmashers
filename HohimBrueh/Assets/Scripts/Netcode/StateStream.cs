@@ -7,7 +7,7 @@ using UnityEngine;
 namespace FrogSmashers.Netcode
 {
     /// <summary>
-    /// Saves and loads Simulation State with one symmetric method per class (spec D2, ADR 0003).
+    /// Saves and loads Simulation State with one symmetric method per class.
     ///
     /// Each simulated class has <c>SyncState(StateStream s)</c>, which lists its fields in a
     /// fixed order: <c>s.Float(nameof(velocityX), ref velocityX)</c>. The same method runs in
@@ -21,7 +21,7 @@ namespace FrogSmashers.Netcode
     ///   Tests use it to check that every field is restored: a field that Fill could not
     ///   change is a field whose value SyncState never assigns back.
     ///
-    /// Rules for <c>SyncState</c> (spec D3):
+    /// Rules for <c>SyncState</c>:
     /// - No branches on state. Every call writes the same fields in the same order, so every
     ///   Saved State has the same layout and Describe can decode any of them.
     /// - A property, a transform value or an enum: copy it to a local, sync the local, and

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fails if a simulated class has state that its SyncState does not save (spec D20).
+"""Fails if a simulated class has state that its SyncState does not save.
 
 Usage: tools/state-coverage.py
 

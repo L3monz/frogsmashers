@@ -5,7 +5,7 @@ using UnityEngine;
 namespace FrogSmashers.Netcode
 {
     /// <summary>
-    /// Playtest instrumentation for the fixed tick (SMA-19). Writes lines that start with
+    /// Playtest instrumentation for the fixed tick. Writes lines that start with
     /// "[SIM]" to the Unity log, so a script can read them from Editor.log after a playtest.
     ///
     /// It reports three things:
@@ -24,7 +24,7 @@ namespace FrogSmashers.Netcode
     ///
     /// This class only reads simulation state. It never changes it. It runs only in the
     /// editor and in development builds. It uses a Dictionary and the wall clock, which
-    /// simulation code must not use (SMA-18). That is acceptable here because nothing in
+    /// simulation code must not use. That is acceptable here because nothing in
     /// the simulation reads its output.
     /// </summary>
     public class SimDiagnostics : MonoBehaviour
@@ -50,7 +50,7 @@ namespace FrogSmashers.Netcode
 
         private readonly Dictionary<Character, JumpTracker> trackers = new Dictionary<Character, JumpTracker>();
 
-        // Characters are pooled (spec D5), so a respawn reuses the same object. Spawns are
+        // Characters are pooled, so a respawn reuses the same object. Spawns are
         // found from each Slot going from no Character to a live one.
         private readonly bool[] aliveLastTick = new bool[6];
 

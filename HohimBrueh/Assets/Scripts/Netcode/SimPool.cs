@@ -26,7 +26,7 @@ namespace FrogSmashers.Netcode
 
     /// <summary>
     /// A fixed number of simulated objects, one per slot, created once at Round start and
-    /// reused (spec D5, ADR 0002). During a Round, nothing creates or destroys a simulated
+    /// reused. During a Round, nothing creates or destroys a simulated
     /// object: Spawn and Despawn change an alive flag, and the alive flags are Simulation
     /// State, so a Rollback can undo them.
     ///
@@ -145,7 +145,7 @@ namespace FrogSmashers.Netcode
             }
         }
 
-        /// <summary>Active means alive and not hidden. Calls SetActive only on a change (spec D4).</summary>
+        /// <summary>Active means alive and not hidden. Calls SetActive only on a change.</summary>
         private void ApplyVisibility(int slot)
         {
             var item = items[slot];

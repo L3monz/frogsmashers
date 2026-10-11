@@ -5,12 +5,12 @@ namespace FrogSmashers.Netcode
 {
     /// <summary>
     /// The simulation's random number stream. Simulation code must use this, not
-    /// <c>UnityEngine.Random</c> (SMA-22).
+    /// <c>UnityEngine.Random</c>.
     ///
     /// <c>UnityEngine.Random</c> is a global stream. Two machines are not at the same point in
     /// it, and a rollback does not rewind it. This stream is a <see cref="SimRandom"/>, and
-    /// its complete state is one value, <see cref="State"/>. Milestone 4 saves that value with
-    /// the rest of the simulation state.
+    /// its complete state is one value, <see cref="State"/>, saved with the rest of the
+    /// simulation state.
     ///
     /// There is one stream for the whole simulation. The draws happen in tick order, and the
     /// tick order is the registration order in <see cref="SimulationDriver"/>, which is the
@@ -33,7 +33,7 @@ namespace FrogSmashers.Netcode
 
         /// <summary>
         /// Moves the stream to the start position for <paramref name="seed"/>. All peers in an
-        /// online match must use the same seed. The session will supply it in Milestone 5.
+        /// online match must use the same seed, agreed before the match starts.
         /// </summary>
         public static void Seed(ulong seed)
         {

@@ -143,7 +143,7 @@ public class CharacterAnimator : MonoBehaviour, ISpawnable
 
 
     // The animator runs once per rendered frame, so it needs frame time, not the simulation's
-    // tick time. Before the fixed tick (SMA-19), character.t was Time.deltaTime and the two
+    // tick time. Before the fixed tick, character.t was Time.deltaTime and the two
     // were the same. Now character.t is always 1/60, and reading it here made animations run
     // faster or slower with the frame rate. Keep the character's own hit-stop scale, which
     // is what character.t used to include.
@@ -175,7 +175,7 @@ public class CharacterAnimator : MonoBehaviour, ISpawnable
     }
 
     /// <summary>
-    /// Resets the view for a new life. The Character is pooled (spec D5), so this animator
+    /// Resets the view for a new life. The Character is pooled, so this animator
     /// keeps its state from the previous life, where a new instance used to start fresh:
     /// it could start in the old animation, or with the tongue still showing. The colour is
     /// set again too, because a Player can change colour on the join screen.

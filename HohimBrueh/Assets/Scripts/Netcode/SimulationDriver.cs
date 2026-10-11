@@ -24,18 +24,17 @@ namespace FrogSmashers.Netcode
         /// pausing, a breakpoint — the accumulator holds seconds of debt, and paying it all
         /// off in one frame produces a long freeze followed by a lurch. Better to drop the
         /// backlog and carry on; in a networked session this is the throttling TimeSync
-        /// handles properly (SMA-17).
+        /// handles properly.
         /// </summary>
         private const int MaxTicksPerFrame = 8;
 
         private static SimulationDriver instance;
 
         // Registration order, not FindObjectsOfType. Unordered iteration where the order
-        // affects state is one of the things SMA-18's guard exists to catch: if two characters
+        // affects state is one of the things tools/sim-guard.py catches: if two characters
         // resolve a collision against each other, whichever ticks first sees the other's old
         // position, and two machines disagreeing on that order is a desync.
         private readonly List<ISimulated> simulated = new List<ISimulated>();
-        private readonly List<ISimulationInput> inputSources = new List<ISimulationInput>();
 
         private float accumulator;
 
@@ -87,8 +86,8 @@ namespace FrogSmashers.Netcode
 
             // Offline, any seed is correct, so use the clock: then each session is different.
             // This is a one-time read before the first tick, not a read inside the
-            // simulation. Online, the session replaces this with a seed that all peers agree
-            // on (Milestone 5).
+            // simulation. In online play, the session replaces this with a seed that all peers
+            // agree on.
             // sim-guard: allow offline seed, read once before the first tick; online, the session supplies it
             SimRng.Seed((ulong)System.DateTime.UtcNow.Ticks);
 
@@ -96,7 +95,7 @@ namespace FrogSmashers.Netcode
             // no entry for this, so its effective value is not confirmed. With auto sync on, a
             // query always sees the current transforms. With it off, a query sees the
             // positions from the last sync, and Unity's physics step does that sync on the
-            // wall clock. Then the result of a hit check depends on frame timing (SMA-24).
+            // wall clock. Then the result of a hit check depends on frame timing.
             Physics2D.autoSyncTransforms = true;
         }
 
@@ -107,7 +106,7 @@ namespace FrogSmashers.Netcode
         }
 
         /// <summary>
-        /// Adds an object to the tick, in whichever roles it implements. Registration order
+        /// Adds an object to the tick. Registration order
         /// is the tick order, so anything spawned as part of the simulation lands in the same
         /// place in the order on every machine.
         /// </summary>
@@ -120,9 +119,6 @@ namespace FrogSmashers.Netcode
             if (sim != null && !instance.simulated.Contains(sim))
                 instance.simulated.Add(sim);
 
-            var input = participant as ISimulationInput;
-            if (input != null && !instance.inputSources.Contains(input))
-                instance.inputSources.Add(input);
         }
 
         public static void Unregister(object participant)
@@ -134,9 +130,6 @@ namespace FrogSmashers.Netcode
             if (sim != null)
                 instance.simulated.Remove(sim);
 
-            var input = participant as ISimulationInput;
-            if (input != null)
-                instance.inputSources.Remove(input);
         }
 
         private void Update()
@@ -163,18 +156,11 @@ namespace FrogSmashers.Netcode
         }
 
         /// <summary>
-        /// Runs exactly one tick: gather this tick's inputs, then advance everything by
-        /// <see cref="SimClock.FixedDeltaTime"/>.
-        ///
-        /// Public because this is the seam a rollback session drives. Replaying a tick means
-        /// restoring state, pointing <see cref="SimClock.SeekTo"/> at that tick, pushing the
-        /// known inputs in, and calling this — with the input-gathering step skipped, since a
-        /// replay must not re-read a gamepad.
-        /// </summary>
-        /// <summary>
-        /// Pooled objects stay registered while dead (spec D5), so the tick skips any that are
-        /// inactive. One that Despawns during a Tick does not tick again that Tick, which fixes
-        /// the deferred-Destroy problem (SMA-25). Also false for an object Unity destroyed.
+        /// Pooled objects stay registered while dead, so the tick skips any that are
+        /// inactive. One that Despawns during a Tick does not tick again that Tick. (Unity's
+        /// Destroy only takes effect at the end of the Render Frame, so a destroyed object
+        /// used to keep ticking for the rest of that frame.) Also false for an object Unity
+        /// destroyed.
         /// </summary>
         private static bool IsLive(object participant)
         {
@@ -182,22 +168,28 @@ namespace FrogSmashers.Netcode
             return behaviour != null && behaviour.isActiveAndEnabled;
         }
 
+        // This Tick's input for all six Slots, reused every Tick.
+        private readonly FrogInput[] tickInputs = new FrogInput[6];
+
+        /// <summary>
+        /// Runs exactly one Tick, in a fixed order: read the six devices and apply the input,
+        /// sync transforms into Box2D, tick everything, advance the clock.
+        ///
+        /// Public because this is the seam a rollback session drives. Running a past Tick
+        /// again means restoring state, pointing <see cref="SimClock.SeekTo"/> at that Tick,
+        /// applying the inputs kept for it, and ticking, without reading any device.
+        /// </summary>
         public void AdvanceOneTick(bool sampleInput = true)
         {
+            if (sampleInput)
+                InputSampler.Sample(tickInputs);
+            TickInput.Apply(tickInputs);
+
             // Push every transform into Box2D before any hit check runs. Auto sync already
             // does this on the first query, but an explicit sync makes the start of each tick
             // a known point. This matters after a rollback restores state: the restored
             // positions must reach the colliders before the resimulated frame queries them.
             Physics2D.SyncTransforms();
-
-            if (sampleInput)
-            {
-                for (int i = 0; i < inputSources.Count; i++)
-                {
-                    if (IsLive(inputSources[i]))
-                        inputSources[i].SampleInput();
-                }
-            }
 
             for (int i = 0; i < simulated.Count; i++)
             {

@@ -217,7 +217,7 @@ public class JoinCanvas : MonoBehaviour
     {
         GameController.ReturnPlayer(assignedPlayer);
         GameController.ReturnColor(color);
-        // Characters are pooled (spec D5): Despawn instead of Destroy.
+        // Characters are pooled: Despawn instead of Destroy.
         GameController.DespawnCharacter(assignedPlayer);
         state = State.Join;
         joinPromptCanvas.enabled = true;

@@ -2,8 +2,8 @@ namespace FrogSmashers.Netcode
 {
     /// <summary>
     /// The pooled simulated objects of the current Round: six Characters, one per Slot, and
-    /// the one fly (spec D5). GameController creates the pools when its scene loads and clears
-    /// them when it is destroyed. FrogSimulation takes over ownership in P6.
+    /// the one fly. GameController creates the pools when its scene loads and clears
+    /// them when it is destroyed.
     /// </summary>
     public static class SimWorld
     {

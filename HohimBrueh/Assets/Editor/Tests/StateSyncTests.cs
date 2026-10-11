@@ -8,7 +8,7 @@ using UnityEngine;
 namespace FrogSmashers.Tests
 {
     /// <summary>
-    /// Round-trip tests for Simulation State (P2, spec D2-D4).
+    /// Round-trip tests for saving and loading Simulation State.
     ///
     /// For each simulated class: fill an instance with generated values, write it, read the
     /// bytes into a second instance, write that one, and compare. Equal bytes mean SyncState

@@ -41,7 +41,7 @@ public class ScorePlum : MonoBehaviour, ISpawnable
         }
     }
 
-    /// <summary>Clears a popup left over from the Character's previous life (the Character is pooled, spec D5).</summary>
+    /// <summary>Clears a popup left over from the Character's previous life (the Character is pooled).</summary>
     public void OnSpawn()
     {
         displayTimeLeft = 0f;

@@ -38,7 +38,7 @@ public class TimeController : MonoBehaviour
     /// were.
     ///
     /// This used to have a sibling that put the whole game into slow motion by setting
-    /// Time.timeScale, which had to go (SMA-21). Two problems with it: it scaled
+    /// Time.timeScale, which had to go. Two problems with it: it scaled
     /// Time.deltaTime, so a gameplay event was reaching in and changing the simulation's
     /// timestep, and it was global — landing a hit slowed down the frog of whoever you hit it
     /// on, and their opponent, and everything else. This version was always the better one

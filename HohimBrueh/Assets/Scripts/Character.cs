@@ -31,7 +31,7 @@ public enum TongueState
     HitFlyBurping
 }
 
-public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
+public class Character : MonoBehaviour, ISimulated, ISpawnable
 {
     [HideInInspector]
     public InputState input = new InputState();
@@ -238,13 +238,17 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
     }
 
     /// <summary>
-    /// Called by the pool on the Tick this Character Spawns. Reads the device once, as Start
-    /// used to; a pooled Character runs Start only on its first life. Reading a device inside
-    /// a Tick is temporary: P5 replaces it with the Tick's own input (spec D7).
+    /// Called by the pool on the Tick this Character Spawns. Applies the Tick's input twice,
+    /// so the previous and current input are equal: holding a button while spawning is not a
+    /// new press.
     /// </summary>
     public void OnSpawn()
     {
-        CheckInput();
+        if (player == null)
+            return;
+        var tickInput = TickInput.For(player.sortPriority);
+        ApplyInput(tickInput);
+        ApplyInput(tickInput);
     }
 
     // Use this for initialization
@@ -262,24 +266,6 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
     void OnDestroy()
     {
         SimulationDriver.Unregister(this);
-    }
-
-    void CheckInput()
-    {
-        if (player == null)
-        {
-            //InputReader.GetInput(input);
-        }
-        else
-        {
-            // HasInstance: a pooled Character can Spawn in a test with no GameController.
-            if (GameController.HasInstance && GameController.State == GameState.RoundFinished && !IsWinningPlayer())
-                InputReader.ClearInputState(input);
-            else
-                InputReader.GetInput(player.inputDevice, input);
-
-
-        }
     }
 
     /// <summary>
@@ -316,7 +302,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
     }
 
     /// <summary>
-    /// Saves or loads this Character's Simulation State (spec D2, inventory in the spec).
+    /// Saves or loads this Character's Simulation State.
     /// The same method runs for both directions; see StateStream for the rules. Fields not
     /// listed here are tuning values, or carry a "sim-state: exclude" comment.
     /// </summary>
@@ -442,20 +428,6 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
             return player == GameController.GetWinningPlayer();
         }
         return false;
-    }
-
-    /// <summary>
-    /// Read this tick's input off the gamepad.
-    ///
-    /// This used to happen in Update() immediately before ticking, which conflated two things
-    /// that have to stay apart: a replayed tick must re-run the simulation *without* touching
-    /// the gamepad, because its inputs come from the session's history instead. The driver now
-    /// samples all inputs first and then advances everything, and a rollback skips the
-    /// sampling step entirely.
-    /// </summary>
-    public void SampleInput()
-    {
-        CheckInput();
     }
 
     /// <summary>
@@ -1501,7 +1473,7 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
             {
                 if (tongueDistance > minimumTongueDistance)
                 {
-                    // Tongue clash, computed from Simulation State (spec D12). It used to query
+                    // Tongue clash, computed from Simulation State. It used to query
                     // the Tongue layer, whose only collider is the TongueTip that
                     // CharacterAnimator moves and switches once per Render Frame: view state
                     // that lagged the Tick and that a Rollback could not restore.
@@ -1647,13 +1619,13 @@ public class Character : MonoBehaviour, ISimulated, ISimulationInput, ISpawnable
 
     }
 
-    // The old clash query used radius 1 against the tip collider's radius 0.5 (spec D12).
+    // The old clash query used radius 1 against the tip collider's radius 0.5.
     const float TongueClashDistance = 1.5f;
 
     /// <summary>
     /// True when this Character's tongue can clash with another tongue: the same states in
     /// which CharacterAnimator showed the tip collider. A stunned tongue is hidden, and a
-    /// burping one is in the mouth (the old collider kept a stale position then; spec D12).
+    /// burping one is in the mouth (the old collider kept a stale position then).
     /// </summary>
     bool TongueIsOut
     {

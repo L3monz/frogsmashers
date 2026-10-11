@@ -7,7 +7,7 @@ The default path is the Windows Editor.log, read through WSL. Unity overwrites
 that file each time the editor starts and keeps the old one as Editor-prev.log.
 Thus run this before you restart the editor.
 
-Checks for the fixed tick (SMA-19):
+Checks for the fixed tick:
 - Tick rate: each full second at timeScale 1 must run 60 ticks (59-61 is
   acceptable, because a second boundary can fall between two frames).
 - Jumps: holding jump keeps the frog rising, so the apex depends on how many
@@ -102,7 +102,7 @@ def main():
     for line in hitch_seconds[:5]:
         print("   ", line)
     tested = ", ".join(sorted(seconds_by_cap)) or "none"
-    print(f"  caps tested: {tested} (the plan covers none, 144, 60, 30, 20)")
+    print(f"  caps tested: {tested} (a full check uses none, 144, 60, 30, 20; F3 cycles them)")
     print("  RESULT:", "PASS" if not bad_seconds else f"FAIL ({len(bad_seconds)} seconds outside 59-61)")
     for line in bad_seconds[:10]:
         print("   ", line)

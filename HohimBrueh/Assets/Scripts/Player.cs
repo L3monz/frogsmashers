@@ -40,7 +40,7 @@ public class Player
 
     /// <summary>
     /// This Player's Character while it is alive, otherwise null. Always the pooled Character
-    /// in this Player's Slot (spec D5). A property, not a field, so the many existing
+    /// in this Player's Slot. A property, not a field, so the many existing
     /// "character == null" checks keep meaning "no live Character".
     /// </summary>
     public Character character
@@ -68,7 +68,7 @@ public class Player
 
     /// <summary>
     /// The part of a Player that changes during a Round. Roster membership is synced by
-    /// FrogSimulation, which owns the roster (P6). Team, device and Slot are Round Setup;
+    /// FrogSimulation, which owns the roster. Team, device and Slot are Round Setup;
     /// roundWins is a Match total.
     /// </summary>
     public void SyncState(StateStream s)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fails if simulation code uses a construct that cannot be deterministic (SMA-18).
+"""Fails if simulation code uses a construct that cannot be deterministic.
 
 Usage: tools/sim-guard.py [--strict]
 
@@ -15,7 +15,7 @@ compile.
 To accept a line, put a marker comment on that line or the line above it:
 
     // sim-guard: allow <reason>       Not simulation, or safe here. Say why.
-    // sim-guard: todo SMA-NN <note>   A known problem with a ticket.
+    // sim-guard: todo <note>          A known problem, not fixed yet. Say what.
 
 An "allow" with no reason is an error. A "todo" is reported but does not fail the
 check, unless --strict is given. A marker that matches nothing is reported too, so
@@ -55,7 +55,6 @@ RULES = [
 ]
 
 MARKER = re.compile(r"//\s*sim-guard:\s*(allow|todo)\b(.*)")
-TODO_TICKET = re.compile(r"^\s*SMA-\d+\b")
 STRING = re.compile(r'@"(?:[^"]|"")*"|\$?"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'')
 
 
@@ -126,8 +125,8 @@ def check_file(rel):
             kind, text = markers[marker_line]
             if kind == "allow" and not text:
                 errors.append(f"{where}: 'sim-guard: allow' needs a reason")
-            elif kind == "todo" and not TODO_TICKET.match(text):
-                errors.append(f"{where}: 'sim-guard: todo' needs a ticket, like 'todo SMA-23 ...'")
+            elif kind == "todo" and not text:
+                errors.append(f"{where}: 'sim-guard: todo' needs a note saying what is wrong")
             elif kind == "todo":
                 todos.append(f"{where}: [{name}] {text}")
 

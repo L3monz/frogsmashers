@@ -14,16 +14,16 @@ public enum GameState
 }
 
 
-public class GameController : MonoBehaviour, ISimulated, ISimulationInput
+public class GameController : MonoBehaviour, ISimulated
 {
     public static bool charactersBounceEachOther = false; // sim-state: exclude Round Setup (option toggle)
     public static bool weirdBounceTrajectories = false; // sim-state: exclude Round Setup (option toggle)
     public static bool onlyBounceBeforeRecover = true; // sim-state: exclude Round Setup (option toggle)
     public static bool allowTeamMode = true;
 
-    public static List<Player> activePlayers = new List<Player>(); // sim-state: exclude the roster; FrogSimulation syncs membership by Slot (P6)
+    public static List<Player> activePlayers = new List<Player>(); // sim-state: exclude the roster; saved as one membership flag per Slot, not as this list
 
-    static List<Player> inactivePlayers; // sim-state: exclude the roster; FrogSimulation syncs membership by Slot (P6)
+    static List<Player> inactivePlayers; // sim-state: exclude the roster; saved as one membership flag per Slot, not as this list
 
     GameState state;
 
@@ -90,7 +90,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         instance = this;
 
         // Register before the pools exist, so GameController ticks first and the pooled
-        // Characters and fly follow in slot order (spec D6). OnEnable registers again, which
+        // Characters and fly follow in slot order. OnEnable registers again, which
         // does nothing.
         SimulationDriver.Register(this);
 
@@ -98,7 +98,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         // Without this the tick kept counting across scenes, so a round's state (the fly's
         // bob phase, for example) depended on how long the previous scenes had run. Online,
         // both peers start the round together at tick 0 with the roster and seed the
-        // session agreed on (SMA-23).
+        // session agreed on.
         SimClock.SeekTo(0);
         if (inactivePlayers == null)
         {
@@ -169,7 +169,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         }
 
         // The Round's simulated objects: six Characters, one per Slot, and the fly. Created
-        // once here and reused; nothing creates or destroys them during the Round (spec D5).
+        // once here and reused; nothing creates or destroys them during the Round.
         // After the Players, because each Character gets its Slot's Player.
         SimWorld.CreatePools(characterPrefab, flyPrefab);
 
@@ -221,7 +221,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
         Camera.main.orthographicSize = adust * 18f;
     }
 
-    FreeLives.InputState input = new InputState(); // sim-state: exclude input read for joins, not state (P5 replaces it with Slot input)
+    FreeLives.InputState input = new InputState(); // sim-state: exclude join-screen input, read in the frame loop before the Round
     FreeLives.InputState combinedInput = new InputState();
 
     void OnEnable()
@@ -241,7 +241,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
     }
 
     /// <summary>
-    /// Match flow for one round. This is the simulation part of GameController (SMA-23).
+    /// Match flow for one round. This is the simulation part of GameController.
     ///
     /// The boundary: a round is the simulation, from scene load to the end of the round.
     /// Everything that changes game state during a round runs here, on the tick: drop-in
@@ -260,8 +260,6 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
     {
         if (state == GameState.Playing)
         {
-            ApplyPendingJoins();
-
             if (SimWorld.Flies != null && !SimWorld.Flies.IsAlive(0) && !isShowDown)
             {
                 if (flySpawnDelay > 0f)
@@ -320,9 +318,9 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
     bool roundEnding;
 
     /// <summary>
-    /// Saves or loads the Round's Simulation State (spec D2). Players, the roster, the
+    /// Saves or loads the Round's Simulation State. Players, the roster, the
     /// Characters and the fly are synced by their own SyncState methods; FrogSimulation
-    /// puts all the sections together in a fixed order (P6).
+    /// puts all the sections together in a fixed order.
     /// </summary>
     public void SyncState(StateStream s)
     {
@@ -343,47 +341,33 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
             winningPlayer = Player.BySlot(winner);
     }
 
-    // Players who pressed join this tick. Filled by SampleInput, applied by SimulateTick.
-    readonly List<Player> pendingJoins = new List<Player>(); // sim-state: exclude this Tick's joins, refilled from input every Tick (P5 removes it)
-
     /// <summary>
-    /// Reads the join button of every player who is not in the match yet.
+    /// Drop-in joins, from this Tick's input. A Player who is not in the roster joins
+    /// by holding X on their own device. Called by TickInput as part of step 1 of the Tick,
+    /// before GameController ticks, so the new Player Spawns on the same Tick.
     ///
-    /// Drop-in joining used to read the devices and add the player in Update(), from the
-    /// frame loop. Now the read happens here, in the driver's input phase, and the join
-    /// happens on the tick. The next step is Milestone 4: a join becomes part of that slot's
-    /// recorded input, so a replay applies it on the same tick. Online, the roster is fixed
-    /// when the round starts.
+    /// Joins used to read the devices in Update(), from the frame loop. Now they come from
+    /// the Slot's input like everything else, so a recorded or replayed Tick applies the same
+    /// join on the same Tick. In online play, the roster is fixed when the Round starts.
     /// </summary>
-    public void SampleInput()
+    public static void ApplyJoins(FrogInput[] inputs)
     {
-        pendingJoins.Clear();
-        if (state != GameState.Playing || isShowDown)
+        if (instance == null || instance.state != GameState.Playing || isShowDown)
             return;
 
-        for (int i = 0; i < inactivePlayers.Count; i++)
+        // Slot order, so two Players joining on one Tick always join in the same order.
+        for (int slot = 0; slot < inputs.Length; slot++)
         {
-            InputReader.GetInput(inactivePlayers[i].inputDevice, input);
-            if (input.xButton)
-                pendingJoins.Add(inactivePlayers[i]);
-        }
-    }
-
-    void ApplyPendingJoins()
-    {
-        for (int i = 0; i < pendingJoins.Count; i++)
-        {
-            var player = pendingJoins[i];
-            if (!inactivePlayers.Contains(player))
+            var player = Player.BySlot(slot);
+            if (player == null || !inputs[slot].XButton || !inactivePlayers.Contains(player))
                 continue;
 
             // A drop-in Player keeps the colour it already has: its Slot's colour, or the one
             // it picked on the join screen. It used to be random; keeping it makes the join
-            // fully deterministic (spec D8).
-            AddPlayer(player);
+            // fully deterministic.
+            instance.AddPlayer(player);
             inactivePlayers.Remove(player);
         }
-        pendingJoins.Clear();
     }
 
     void Update()
@@ -466,9 +450,9 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
             ArrangeScoreboards();
 
-            // Drop-in joins are read in SampleInput and applied in SimulateTick. The F2 key that
+            // Drop-in joins come from each Slot's input (ApplyJoins). The F2 key that
             // spawned a frog with no Player is gone: a Character with no Player has no Slot, so
-            // it does not fit the pools (spec D17).
+            // it does not fit the pools.
             ReconcileScoreboard();
 
             // sim-guard: allow leaves the match for the title screen; not simulation
@@ -605,7 +589,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
     /// <summary>
     /// Makes the per-Player scoreboard match the roster: a display for each Player in it,
-    /// and none for a Player who is not (spec D11). The scoreboard is view and follows
+    /// and none for a Player who is not. The scoreboard is view and follows
     /// Simulation State, so after a Rollback past a join it corrects itself. Free-for-all
     /// only: team mode shows two team displays instead, and Showdown hides the scoreboard.
     /// </summary>
@@ -674,7 +658,7 @@ public class GameController : MonoBehaviour, ISimulated, ISimulationInput
 
     Player winningPlayer;
 
-    public static Player lastWinningPlayer { get; private set; } // sim-state: exclude Match result for the score screen (D9 moves it to FinishRound)
+    public static Player lastWinningPlayer { get; private set; } // sim-state: exclude Match result for the score screen
     public static bool HasInstance { get { return instance != null; } }
 
     public static Player GetWinningPlayer()

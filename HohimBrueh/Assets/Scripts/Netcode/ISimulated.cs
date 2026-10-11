@@ -18,24 +18,11 @@ namespace FrogSmashers.Netcode
 
         /// <summary>
         /// Saves or loads this object's Simulation State through <paramref name="s"/>
-        /// (spec D2, ADR 0003). One method for both directions, so the two cannot drift
+        ///. One method for both directions, so the two cannot drift
         /// apart. See <see cref="StateStream"/> for the rules; tools/state-coverage.py checks
         /// that no assigned field is missing.
         /// </summary>
         void SyncState(StateStream s);
     }
 
-    /// <summary>
-    /// Something that produces input for a tick, sampled before anything simulates.
-    ///
-    /// Separate from <see cref="ISimulated"/> because reading a gamepad is emphatically *not*
-    /// replayable — during a rollback the inputs for a past tick come from the session's
-    /// history instead, and the gamepad must not be touched at all. Keeping the two apart is
-    /// what lets the driver do "gather this tick's inputs, then advance the tick," which is
-    /// the same shape a rollback session uses.
-    /// </summary>
-    public interface ISimulationInput
-    {
-        void SampleInput();
-    }
 }
