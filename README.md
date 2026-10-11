@@ -26,6 +26,10 @@ Work is tracked in Linear (project "FrogSmashers: Rollback Netcode").
 
 Open `HohimBrueh/` in Unity Hub once before using the scripts; they need its `Library/` folder.
 
+**Run the scripts in `tools/` from a WSL terminal** (type `wsl` in PowerShell, then
+`cd /mnt/c/<path to>/frogsmashers`). Started from PowerShell or File Explorer, Windows only asks
+which program should open the `.sh` file.
+
 ## Day to day
 
 Close Unity before running a script that opens the project: the editor locks it.
