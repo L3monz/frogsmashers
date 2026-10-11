@@ -65,3 +65,25 @@ _Avoid_: instantiate, destroy, create, kill
 **Cosmetic Effect**:
 A sound, particle, popup or screen shake that the simulation triggers but that is not part of Simulation State. It plays when a Tick first runs and does not play again when a Rollback runs that Tick again.
 _Avoid_: effect (alone), feedback, juice
+
+### Playing online
+
+**Peer**:
+One running copy of the game taking part in an Online Match, normally one per machine. Hindsight's term.
+_Avoid_: client, host, player (a Peer is a machine, a Player is a person)
+
+**Online Match**:
+A Match played between two Peers over a network.
+_Avoid_: netplay, online game
+
+**Room**:
+A meeting place for two Peers before an Online Match. It holds no game state.
+_Avoid_: lobby, session, server
+
+**Room Code**:
+The short text that lets a friend join a Room.
+_Avoid_: join code, password
+
+**Room Owner**:
+The Peer that created the Room. It decides the Round Setup of an Online Match and plays in Slot 0.
+_Avoid_: host (in this project, a host is the machine that runs the server), server
