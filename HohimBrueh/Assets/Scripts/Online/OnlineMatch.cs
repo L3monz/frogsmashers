@@ -6,13 +6,9 @@ using UnityEngine.SceneManagement;
 namespace FrogSmashers.Online
 {
     /// <summary>
-    /// One Online Match between two Peers, from connecting until someone leaves.
-    ///
-    /// For now the Peers connect by IP address from the command line:
-    ///   FrogSmashers.exe -online-host 9100                 (the Room Owner, Slot 0)
-    ///   FrogSmashers.exe -online-join 192.168.1.20:9100    (the friend, Slot 1)
-    /// with optional -online-latency MS and -online-loss PERCENT to simulate a bad network.
-    /// The room-code screens replace the command line later; they produce the same link.
+    /// One Online Match between two Peers, from the moment a lobby connects them until someone
+    /// leaves. It starts from the lobby's <see cref="OnlineMatchStart"/> and knows nothing about
+    /// how the two found each other.
     ///
     /// Once connected, the Room Owner sends the Match setup (the Match seed and the option
     /// toggles). Both games apply the same fixed Round Setup (Slots 0 and 1, default colours,
@@ -35,6 +31,7 @@ namespace FrogSmashers.Online
 
         private IOnlineLink link;
         private bool isRoomOwner;
+        private bool relayed;
         private bool setupReceived;
         private bool started;
         private ulong matchSeed;
@@ -55,61 +52,36 @@ namespace FrogSmashers.Online
 
         public static IOnlineLink Link => instance != null ? instance.link : null;
 
+        /// <summary>True when the two games talk through the relay server. For the logs.</summary>
+        public static bool Relayed => instance != null && instance.relayed;
+
         /// <summary>Development builds with -online-bot: the local Player plays scripted input.</summary>
         public static bool BotInput { get; private set; }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void StartFromCommandLine()
+        /// <summary>Starts the Online Match a lobby has connected.</summary>
+        public static void Begin(OnlineMatchStart start)
         {
-            string[] args = Environment.GetCommandLineArgs();
-            string host = ArgumentAfter(args, "-online-host");
-            string join = ArgumentAfter(args, "-online-join");
-            if (host == null && join == null)
+            if (instance != null)
                 return;
-
-            var conditions = new NetworkConditions
-            {
-                LatencyMs = ParseInt(ArgumentAfter(args, "-online-latency")),
-                LossPercent = ParseInt(ArgumentAfter(args, "-online-loss")),
-            };
 
             // A window without focus must keep running, or its Peer stops sending and the
             // other Peer sees it as gone. (Two instances on one PC: one is always unfocused.)
             Application.runInBackground = true;
 
-            IOnlineLink link;
-            try
-            {
-                if (host != null)
-                {
-                    link = LiteNetLibLink.Listen(ParseInt(host), conditions);
-                }
-                else
-                {
-                    string[] parts = join.Split(':');
-                    link = LiteNetLibLink.Connect(parts[0], parts.Length > 1 ? ParseInt(parts[1]) : 9100, conditions);
-                }
-            }
-            catch (Exception ex)
-            {
-                // No Match without a link. Say why on screen, and play on offline.
-                Debug.LogError("[ONLINE] couldn't open the network connection: " + ex);
-                ShowMessage("Couldn't start online play: " + ex.Message);
-                return;
-            }
-
             var go = new GameObject("OnlineMatch");
             DontDestroyOnLoad(go);
             instance = go.AddComponent<OnlineMatch>();
-            instance.isRoomOwner = host != null;
-            instance.link = link;
+            instance.isRoomOwner = start.IsRoomOwner;
+            instance.relayed = start.Relayed;
+            instance.link = start.Link;
             if (Debug.isDebugBuild)
             {
-                instance.leaveAfterSeconds = ParseInt(ArgumentAfter(args, "-online-leave-after"));
-                BotInput = Array.IndexOf(args, "-online-bot") >= 0;
+                string[] args = Environment.GetCommandLineArgs();
+                instance.leaveAfterSeconds = CommandLine.ParseInt(CommandLine.After(args, "-online-leave-after"));
+                BotInput = CommandLine.Has(args, "-online-bot");
             }
             Debug.Log("[ONLINE] " + (instance.isRoomOwner ? "Room Owner" : "friend") + ", " + instance.link.Description
-                + ", " + conditions + ", build " + BuildInfo.Id);
+                + ", build " + BuildInfo.Id);
         }
 
         private void OnEnable()
@@ -285,7 +257,7 @@ namespace FrogSmashers.Online
         }
 
         /// <summary>Shows a message about online play for a few seconds, on any screen.</summary>
-        private static void ShowMessage(string message)
+        public static void ShowMessage(string message)
         {
             lastMessage = message;
             lastMessageUntil = Time.realtimeSinceStartup + MessageSeconds;
@@ -306,17 +278,6 @@ namespace FrogSmashers.Online
                 }
                 GUI.Label(new Rect(10, 10, 800, 24), "ONLINE: " + lastMessage);
             }
-        }
-
-        private static string ArgumentAfter(string[] args, string name)
-        {
-            int index = Array.IndexOf(args, name);
-            return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
-        }
-
-        private static int ParseInt(string text)
-        {
-            return int.TryParse(text, out int value) ? value : 0;
         }
     }
 }

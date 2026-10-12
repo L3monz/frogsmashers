@@ -59,8 +59,10 @@ public class IntroAnimController : MonoBehaviour
     {
         animator = GetComponent<Animator>();
         input = new InputState();
+        titleMenu = FrogSmashers.TitleMenu.Create();
     }
     InputState input;
+    FrogSmashers.TitleMenu titleMenu;
 
     float shakeDelay;
     Vector3 shakeOffset = Vector3.zero;
@@ -79,10 +81,8 @@ public class IntroAnimController : MonoBehaviour
         InputReader.GetInput(input);
         if (cameraPosM == 1f)
         {
-            if (input.start && !input.wasStart)
-            {
-                UnityEngine.SceneManagement.SceneManager.LoadScene("JoinScreen");
-            }
+            // The menu chooses between local and online play.
+            titleMenu.Show();
         }
         else
         {

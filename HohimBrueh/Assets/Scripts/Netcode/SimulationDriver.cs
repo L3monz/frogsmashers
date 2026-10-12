@@ -624,7 +624,8 @@ namespace FrogSmashers.Netcode
                 + " advantage=" + stats.LocalFrameAdvantage + "/" + stats.RemoteFrameAdvantage
                 + " rollbacks=" + online.RollbackCount + " rolledBackTicks=" + online.RolledBackFrames
                 + " refused=" + TotalOnlineRefusedTicks + " waited=" + TotalOnlineWaitedTicks
-                + " sent=" + stats.BytesSentPerSecond.ToString("0") + "B/s");
+                + " sent=" + stats.BytesSentPerSecond.ToString("0") + "B/s"
+                + " path=" + (FrogSmashers.Online.OnlineMatch.Relayed ? "relay" : "direct"));
         }
 
         /// <summary>

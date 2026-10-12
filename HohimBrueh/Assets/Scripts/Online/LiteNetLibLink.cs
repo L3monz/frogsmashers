@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
 using Hindsight.Core;
+using Hootenanny.Protocol;
 using LiteNetLib;
 using UnityEngine;
 
@@ -15,21 +14,33 @@ namespace FrogSmashers.Online
     ///   add latency;
     /// - match messages between the two games (the Match setup, leaving), reliable and in order.
     ///
-    /// Nothing outside this class knows about addresses or LiteNetLib: the rest of the game sees
-    /// <see cref="IOnlineLink"/>.
+    /// Both travel either directly to the other Peer or through the relay server, and nothing
+    /// above this class can tell which. The lobby that made the connection owns the socket and
+    /// its events, and hands what arrives to this link.
     ///
     /// Single-threaded: call <see cref="Poll"/> on the main thread, every frame and before the
     /// session polls.
     /// </summary>
-    public sealed class LiteNetLibLink : IOnlineLink, INetEventListener, IDisposable
+    public sealed class LiteNetLibLink : IOnlineLink
     {
-        private const string ConnectionKey = "frog-smashers-online";
-        private const byte GameplayChannel = 0;
-        private const byte MatchChannel = 1;
+        /// <summary>The key one game uses to connect to the other, directly.</summary>
+        internal const string PeerKey = "frog-smashers-online";
 
         // Hindsight decides when a silent Peer is gone (Interrupted after 750 ms, Disconnected
         // after 5 s). LiteNetLib's own timeout is longer, so it never closes the connection first.
-        private const int LiteNetLibTimeoutMs = 10000;
+        internal const int LiteNetLibTimeoutMs = 10000;
+
+        private const byte GameplayChannel = 0;
+        private const byte MatchChannel = 1;
+
+        // On the relay path, reliable data starts with one of these after the relay header, to
+        // tell match messages from the lobby's own and from a goodbye.
+        internal const byte RelayKindMatch = 1;
+        internal const byte RelayKindLobby = 2;
+        internal const byte RelayKindGoodbye = 3;
+
+        // Long enough for a goodbye on the relay path to leave the socket before it closes.
+        private const int RelayGoodbyeMs = 300;
 
         // Received gameplay datagrams wait here until the session reads them. Buffers are reused,
         // so receiving allocates nothing once the pool has grown.
@@ -37,84 +48,64 @@ namespace FrogSmashers.Online
         private readonly Queue<byte[]> received = new Queue<byte[]>();
         private readonly Queue<int> receivedLengths = new Queue<int>();
         private readonly Stack<byte[]> pool = new Stack<byte[]>();
+        private readonly byte[] relayBuffer = new byte[MaxDatagram + Relay.HeaderSize];
 
         private readonly Queue<byte[]> matchMessages = new Queue<byte[]>();
         private readonly NetManager net;
-        private readonly bool accepting;
-        private NetPeer peer;
+        private readonly Action pollEvents;
+        private readonly NetPeer direct;
+        private readonly NetPeer server;
 
         // The other Peer, as Hindsight names it. There's only ever one.
         private static readonly PeerId RemotePeer = new PeerId(1);
 
         public PeerId Remote => RemotePeer;
 
-        public LinkState State { get; private set; } = LinkState.Connecting;
-        public string Description { get; private set; }
+        public LinkState State { get; private set; } = LinkState.Connected;
+        public string Description { get; }
         public string CloseReason { get; private set; }
-        public int RoundTripMs => peer != null ? peer.RoundTripTime : 0;
+        public bool Relayed => direct == null;
 
-        // LiteNetLib's own warnings and errors, into Player.log with the rest.
-        private sealed class UnityNetLogger : INetLogger
-        {
-            public void WriteNet(NetLogLevel level, string str, params object[] args)
-            {
-                string line = "[LITENETLIB] " + (args != null && args.Length > 0 ? string.Format(str, args) : str);
-                if (level == NetLogLevel.Error) Debug.LogWarning(line);
-                else Debug.Log(line);
-            }
-        }
+        /// <summary>A link straight to the other Peer.</summary>
+        internal static LiteNetLibLink Direct(NetManager net, Action pollEvents, NetPeer peer) =>
+            new LiteNetLibLink(net, pollEvents, peer, null, "direct to " + peer.Address + ":" + peer.Port);
 
-        private LiteNetLibLink(bool accepting, NetworkConditions conditions)
-        {
-            if (NetDebug.Logger == null)
-                NetDebug.Logger = new UnityNetLogger();
-            this.accepting = accepting;
-            net = new NetManager(this)
-            {
-                ChannelsCount = 2,
-                DisconnectTimeout = LiteNetLibTimeoutMs,
-                AutoRecycle = true,
-                // IPv4 only. With IPv6 on, LiteNetLib also opens a dual-mode IPv6 socket, and
-                // Unity 2019's IL2CPP on Windows throws while setting that socket's options.
-                IPv6Enabled = false,
-            };
-            conditions.ApplyTo(net);
-        }
+        /// <summary>A link through the relay server, which forwards to the other member of the Room.</summary>
+        internal static LiteNetLibLink ThroughRelay(NetManager net, Action pollEvents, NetPeer server) =>
+            new LiteNetLibLink(net, pollEvents, null, server, "relayed through " + server.Address + ":" + server.Port);
 
-        /// <summary>Wait for the other Peer to connect on <paramref name="port"/>.</summary>
-        public static LiteNetLibLink Listen(int port, NetworkConditions conditions)
+        private LiteNetLibLink(NetManager net, Action pollEvents, NetPeer direct, NetPeer server, string description)
         {
-            var link = new LiteNetLibLink(accepting: true, conditions);
-            if (!link.net.Start(port))
-                link.Close("Couldn't listen on UDP port " + port + ".");
-            else
-                link.Description = "waiting for a friend on port " + port;
-            return link;
-        }
-
-        /// <summary>Connect to a Peer that is listening at <paramref name="host"/>:<paramref name="port"/>.</summary>
-        public static LiteNetLibLink Connect(string host, int port, NetworkConditions conditions)
-        {
-            var link = new LiteNetLibLink(accepting: false, conditions);
-            link.net.Start();
-            link.peer = link.net.Connect(host, port, ConnectionKey);
-            link.Description = "connecting to " + host + ":" + port;
-            return link;
+            this.net = net;
+            this.pollEvents = pollEvents;
+            this.direct = direct;
+            this.server = server;
+            Description = description;
+            Relay.WriteHeader(relayBuffer);
         }
 
         /// <summary>Handle everything that arrived. Call every frame, before the session polls.</summary>
         public void Poll()
         {
             if (State != LinkState.Closed)
-                net.PollEvents();
+                pollEvents();
         }
 
         // ---- Gameplay datagrams (IPeerTransport) -----------------------------------------
 
         public void Send(PeerId to, byte[] data, int offset, int length)
         {
-            if (State == LinkState.Connected && to == RemotePeer)
-                peer.Send(data, offset, length, GameplayChannel, DeliveryMethod.Unreliable);
+            if (State != LinkState.Connected || to != RemotePeer)
+                return;
+            if (direct != null)
+            {
+                direct.Send(data, offset, length, GameplayChannel, DeliveryMethod.Unreliable);
+            }
+            else if (length <= MaxDatagram)
+            {
+                Buffer.BlockCopy(data, offset, relayBuffer, Relay.HeaderSize, length);
+                server.Send(relayBuffer, 0, Relay.HeaderSize + length, DeliveryMethod.Unreliable);
+            }
         }
 
         public bool TryReceive(byte[] buffer, out PeerId from, out int length)
@@ -140,8 +131,12 @@ namespace FrogSmashers.Online
         /// <summary>Send a match message: reliable and in order. Rare, so it may allocate.</summary>
         public void SendMatchMessage(byte[] message)
         {
-            if (State == LinkState.Connected)
-                peer.Send(message, MatchChannel, DeliveryMethod.ReliableOrdered);
+            if (State != LinkState.Connected)
+                return;
+            if (direct != null)
+                direct.Send(message, MatchChannel, DeliveryMethod.ReliableOrdered);
+            else
+                SendRelayedReliable(server, RelayKindMatch, message);
         }
 
         public bool TryReceiveMatchMessage(out byte[] message)
@@ -164,83 +159,81 @@ namespace FrogSmashers.Online
             State = LinkState.Closed;
             CloseReason = reason;
             Debug.Log("[ONLINE] link closed: " + reason);
-            // The reason rides in the disconnect packet itself. Sent as a separate message, it
-            // could lose the race with the disconnect, and the friend would only hear "left".
-            if (reasonForFriend != null && peer != null && peer.ConnectionState == ConnectionState.Connected)
-                net.DisconnectPeer(peer, System.Text.Encoding.UTF8.GetBytes(reasonForFriend));
-            net.Stop(sendDisconnectMessages: true);
-        }
 
-        public void Dispose()
-        {
-            Close("closed");
-        }
-
-        // ---- LiteNetLib events ------------------------------------------------------------
-
-        public void OnConnectionRequest(ConnectionRequest request)
-        {
-            // One friend only. A second caller, or one with the wrong key, is refused.
-            if (accepting && peer == null && State == LinkState.Connecting)
-                request.AcceptIfKey(ConnectionKey);
-            else
-                request.Reject();
-        }
-
-        public void OnPeerConnected(NetPeer connected)
-        {
-            peer = connected;
-            State = LinkState.Connected;
-            Description = "connected to " + connected.Address + ":" + connected.Port;
-            Debug.Log("[ONLINE] " + Description);
-        }
-
-        public void OnPeerDisconnected(NetPeer disconnected, DisconnectInfo info)
-        {
-            if (disconnected != peer)
-                return;
-            if (info.Reason != DisconnectReason.RemoteConnectionClose)
-                Close("Connection lost (" + info.Reason + ").");
-            else if (info.AdditionalData != null && info.AdditionalData.AvailableBytes > 0)
-                Close(System.Text.Encoding.UTF8.GetString(info.AdditionalData.GetRemainingBytes()));
-            else
-                Close("Your friend left.");
-        }
-
-        public void OnNetworkReceive(NetPeer from, NetPacketReader reader, byte channel, DeliveryMethod method)
-        {
-            int length = reader.AvailableBytes;
-            if (channel == MatchChannel)
+            if (direct != null)
             {
-                matchMessages.Enqueue(reader.GetRemainingBytes());
-                return;
+                // The reason rides in the disconnect packet itself. Sent as a separate message, it
+                // could lose the race with the disconnect, and the friend would only hear "left".
+                if (reasonForFriend != null && direct.ConnectionState == ConnectionState.Connected)
+                    net.DisconnectPeer(direct, System.Text.Encoding.UTF8.GetBytes(reasonForFriend));
+                net.Stop(sendDisconnectMessages: true);
             }
-            if (length > MaxDatagram)
-                return;
+            else
+            {
+                // Through the relay there is no disconnect packet between the two games, so say
+                // goodbye as a reliable message, and give it a moment to leave before the socket
+                // closes. Closing also leaves the Room, which tells the friend in any case.
+                SendRelayedReliable(server, RelayKindGoodbye,
+                    System.Text.Encoding.UTF8.GetBytes(reasonForFriend ?? ""));
+                var closing = net;
+                System.Threading.Tasks.Task.Delay(RelayGoodbyeMs).ContinueWith(_ => closing.Stop(sendDisconnectMessages: true));
+            }
+        }
 
+        // ---- From the lobby that owns the socket -----------------------------------------
+
+        internal bool IsDirectPeer(NetPeer peer) => direct != null && peer == direct;
+
+        /// <summary>Data from the direct peer: a gameplay datagram or, on the match channel, a match message.</summary>
+        internal void OnDirectReceive(NetPacketReader reader, byte channel)
+        {
+            if (channel == MatchChannel)
+                matchMessages.Enqueue(reader.GetRemainingBytes());
+            else
+                Enqueue(reader.RawData, reader.Position, reader.AvailableBytes);
+        }
+
+        /// <summary>A relayed gameplay datagram: the payload after the relay header.</summary>
+        internal void OnRelayedDatagram(byte[] data, int offset, int length)
+        {
+            Enqueue(data, offset, length);
+        }
+
+        internal void OnRelayedMatchMessage(byte[] message)
+        {
+            matchMessages.Enqueue(message);
+        }
+
+        /// <summary>The other Peer is gone, or the path to it is: close, with a reason for the player.</summary>
+        internal void OnLost(string reason)
+        {
+            Close(reason);
+        }
+
+        /// <summary>Reliable data for the other Peer through the relay: relay header, kind, payload.</summary>
+        internal static void SendRelayedReliable(NetPeer server, byte kind, byte[] payload)
+        {
+            var packet = new byte[Relay.HeaderSize + 1 + payload.Length];
+            Relay.WriteHeader(packet);
+            packet[Relay.HeaderSize] = kind;
+            Buffer.BlockCopy(payload, 0, packet, Relay.HeaderSize + 1, payload.Length);
+            server.Send(packet, DeliveryMethod.ReliableOrdered);
+        }
+
+        private void Enqueue(byte[] data, int offset, int length)
+        {
+            if (State == LinkState.Closed || length > MaxDatagram)
+                return;
             byte[] datagram = pool.Count > 0 ? pool.Pop() : new byte[MaxDatagram];
-            Buffer.BlockCopy(reader.RawData, reader.Position, datagram, 0, length);
+            Buffer.BlockCopy(data, offset, datagram, 0, length);
             received.Enqueue(datagram);
             receivedLengths.Enqueue(length);
-        }
-
-        public void OnNetworkError(IPEndPoint endPoint, SocketError socketError)
-        {
-            Debug.LogWarning("[ONLINE] socket error " + socketError);
-        }
-
-        public void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
-        {
-        }
-
-        public void OnNetworkLatencyUpdate(NetPeer from, int latency)
-        {
         }
     }
 
     /// <summary>
-    /// Simulated bad network, for testing on a LAN: LiteNetLib delays and drops packets on
-    /// purpose. Off unless set from the command line.
+    /// Simulated bad network, for testing: LiteNetLib delays and drops packets on purpose. Off
+    /// unless set from the command line.
     /// </summary>
     public struct NetworkConditions
     {
@@ -266,5 +259,22 @@ namespace FrogSmashers.Online
         public override string ToString() => LatencyMs > 0 || LossPercent > 0
             ? "simulated " + LatencyMs + " ms, " + LossPercent + "% loss"
             : "no simulated latency";
+    }
+
+    /// <summary>LiteNetLib's own warnings and errors, into Player.log with the rest.</summary>
+    internal sealed class UnityNetLogger : INetLogger
+    {
+        public static void Install()
+        {
+            if (NetDebug.Logger == null)
+                NetDebug.Logger = new UnityNetLogger();
+        }
+
+        public void WriteNet(NetLogLevel level, string str, params object[] args)
+        {
+            string line = "[LITENETLIB] " + (args != null && args.Length > 0 ? string.Format(str, args) : str);
+            if (level == NetLogLevel.Error) Debug.LogWarning(line);
+            else Debug.Log(line);
+        }
     }
 }

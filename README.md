@@ -137,6 +137,17 @@ its replay recording; `tools/compare-recordings.py --latest-online` (from WSL) c
 identical Tick for Tick, and `FrogSmashers.exe -replay-newest` replays the newest recording
 offline and quits, logging `replay result=PASS` or the first mismatch.
 
+`-Server` makes the two copies meet through the rendezvous server by Room Code, like players do,
+and `-Relay` makes them use the server's relay instead of a direct connection:
+
+```
+powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 -Server -Bot -LeaveAfter 20
+powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 -Server -Relay -Bot -LeaveAfter 20
+```
+
+The game's server messages come from the server repo's protocol library. After it changes, run
+`tools/update-hootenanny.sh` (Unity closed) to copy the new `Hootenanny.Protocol.dll` in.
+
 ## Diagnosing
 
 - Player builds log to `%USERPROFILE%\AppData\LocalLow\DefaultCompany\Free Lives Template\Player.log`.
