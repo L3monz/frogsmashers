@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Hindsight.Core;
 using UnityEngine;
@@ -32,6 +33,13 @@ namespace FrogSmashers.Netcode
         // Development check: the Slot of a Character to nudge at the end of the next first-run
         // Frame, or -1. See InjectDesyncAfterThisFrame.
         private int nudgeSlot = -1;
+
+        /// <summary>
+        /// Called after every run of a Tick, including each run during a Rollback, with the
+        /// Tick's number and inputs. For the online replay recording, which keeps each Tick's
+        /// final run. Must not change simulation state.
+        /// </summary>
+        public Action<FrogSimulation, int, FrogInput[]> TickRun;
 
         public FrogSimulation(GameController round)
         {
@@ -106,6 +114,9 @@ namespace FrogSmashers.Netcode
                 flies.Get(0).SimulateTick(dt);
 
             SimClock.Advance();
+
+            if (TickRun != null)
+                TickRun(this, SimClock.Tick - 1, inputs);
 
             // The nudge happens only on the first run of a Frame, never when a Rollback runs it
             // again. So the replay cannot reproduce it, exactly like a real determinism bug.

@@ -39,6 +39,11 @@ namespace FrogSmashers.Online
         private bool started;
         private ulong matchSeed;
 
+        // Development builds: leave the Match this many seconds after it starts, so an automatic
+        // test ends cleanly and both Peers save their recordings. 0 = never.
+        private float leaveAfterSeconds;
+        private float leaveAt;
+
         /// <summary>True from the start of an Online Match until it ends.</summary>
         public static bool IsActive => instance != null && instance.started;
 
@@ -49,6 +54,9 @@ namespace FrogSmashers.Online
         public static int RemoteSlot => IsRoomOwner ? 1 : 0;
 
         public static IOnlineLink Link => instance != null ? instance.link : null;
+
+        /// <summary>Development builds with -online-bot: the local Player plays scripted input.</summary>
+        public static bool BotInput { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void StartFromCommandLine()
@@ -95,6 +103,11 @@ namespace FrogSmashers.Online
             instance = go.AddComponent<OnlineMatch>();
             instance.isRoomOwner = host != null;
             instance.link = link;
+            if (Debug.isDebugBuild)
+            {
+                instance.leaveAfterSeconds = ParseInt(ArgumentAfter(args, "-online-leave-after"));
+                BotInput = Array.IndexOf(args, "-online-bot") >= 0;
+            }
             Debug.Log("[ONLINE] " + (instance.isRoomOwner ? "Room Owner" : "friend") + ", " + instance.link.Description
                 + ", " + conditions + ", build " + BuildInfo.Id);
         }
@@ -130,6 +143,12 @@ namespace FrogSmashers.Online
 
             while (link.TryReceiveMatchMessage(out byte[] message))
                 OnMatchMessage(message);
+
+            if (started && leaveAfterSeconds > 0 && Time.realtimeSinceStartup > leaveAt)
+            {
+                End("Test finished: left after " + leaveAfterSeconds + " s.");
+                return;
+            }
 
             if (!started && isRoomOwner && !setupReceived)
                 SendSetup();
@@ -178,6 +197,7 @@ namespace FrogSmashers.Online
         private void StartMatch()
         {
             started = true;
+            leaveAt = Time.realtimeSinceStartup + leaveAfterSeconds;
             GameController.PrepareOnlineMatch(new[] { 0, 1 });
             Debug.Log("[ONLINE] Match starting: seed " + matchSeed.ToString("X16") + ", local Slot " + LocalSlot);
             SceneManager.LoadScene(GameController.levelNames[0]);

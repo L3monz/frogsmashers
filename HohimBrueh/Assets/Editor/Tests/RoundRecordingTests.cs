@@ -20,6 +20,32 @@ namespace FrogSmashers.Tests
         }
 
         [Test]
+        public void ARollbackRunOverwritesTheTicksItRunsAgain()
+        {
+            // Online: Ticks 0-3 first run on predictions, then a Rollback runs 2 and 3 again
+            // with the real inputs. The recording must keep the second runs.
+            var recording = new RoundRecording();
+            var inputs = new FrogInput[6];
+            for (int tick = 0; tick < 4; tick++)
+                recording.SetTick(tick, inputs, checksum: 100u + (uint)tick);
+
+            inputs[1] = FrogInput.Make(left: true);
+            recording.SetTick(2, inputs, 202u);
+            Assert.That(recording.TickCount, Is.EqualTo(3), "the Ticks after the re-run one are dropped until they run again");
+            recording.SetTick(3, inputs, 203u);
+
+            var read = new FrogInput[6];
+            recording.GetInputs(2, read);
+            Assert.That(read[1].Left, Is.True);
+            Assert.That(recording.ChecksumAt(1), Is.EqualTo(101u));
+            Assert.That(recording.ChecksumAt(3), Is.EqualTo(203u));
+
+            recording.Truncate(2);
+            Assert.That(recording.TickCount, Is.EqualTo(2), "only confirmed Ticks are kept");
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => recording.SetTick(5, inputs, 0u));
+        }
+
+        [Test]
         public void ARecordingSurvivesWritingAndReading()
         {
             var recording = new RoundRecording

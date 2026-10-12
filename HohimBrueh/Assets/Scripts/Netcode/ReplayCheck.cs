@@ -23,6 +23,12 @@ namespace FrogSmashers.Netcode
     /// with its Tick. When the replay ends, pass or fail, the game loads the join screen: the
     /// normal round end would count the replay as a Round of the Match.
     ///
+    /// Online Rounds are recorded too, differently: a first run there uses predicted inputs,
+    /// and a Rollback runs past Ticks again with the real ones. So every run of a Tick is
+    /// recorded by its number, overwriting the earlier run, and when the Round ends the
+    /// recording keeps only the Ticks confirmed by both Peers. Both Peers' recordings of the
+    /// same Round must then be identical, and each replays offline like any other.
+    ///
     /// The driver calls <see cref="SeedForRound"/>, <see cref="BeginRound"/>,
     /// <see cref="TryGetReplayInputs"/>, <see cref="AfterTick"/> and <see cref="EndRound"/>.
     /// Not simulation code: it reads the state after each Tick and never changes it.
@@ -39,6 +45,10 @@ namespace FrogSmashers.Netcode
         private static RoundRecording replay;
         private static RoundRecording pendingReplay;
         private static int replayTick;
+        private static bool recordingOnline;
+        // The online Slot, taken when the Round starts: by the time a Match that ended early
+        // saves its recording, the Match itself is already gone.
+        private static int recordingSlot;
         private static readonly StateBuffer stateBuffer = new StateBuffer(4096);
 
         /// <summary>True while a recorded Round is being replayed. The driver runs it in Direct mode.</summary>
@@ -50,6 +60,20 @@ namespace FrogSmashers.Netcode
         private static string Folder
         {
             get { return Path.Combine(Application.persistentDataPath, "replays"); }
+        }
+
+        // Development builds started with -replay-newest replay the newest recording straight
+        // away and quit when it's done, so a script can check a recording without a key press.
+        private static bool AutoReplay
+        {
+            get { return Debug.isDebugBuild && Array.IndexOf(Environment.GetCommandLineArgs(), "-replay-newest") >= 0; }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void StartAutoReplay()
+        {
+            if (AutoReplay && !StartReplayOfNewest())
+                Application.Quit();
         }
 
         /// <summary>F10: replays the newest recording. Returns false if there is none.</summary>
@@ -95,7 +119,7 @@ namespace FrogSmashers.Netcode
         /// Called when a Round's scene has set up and seeded its simulation, before Tick 0.
         /// Starts a replay if one is pending, otherwise starts recording.
         /// </summary>
-        public static void BeginRound(FrogSimulation simulation, ulong seed)
+        public static void BeginRound(FrogSimulation simulation, ulong seed, bool online = false)
         {
             // If the new scene set up before the old one ended, finish the old Round first.
             if (mode != Mode.Idle)
@@ -123,6 +147,30 @@ namespace FrogSmashers.Netcode
             recording.RecordedCap = Application.targetFrameRate;
             recording.StartChecksum = start;
             mode = Mode.Recording;
+            recordingOnline = online;
+            recordingSlot = FrogSmashers.Online.OnlineMatch.LocalSlot;
+            if (online)
+                simulation.TickRun = RecordOnlineTick;
+        }
+
+        // Every run of a Tick in an online Round, Rollbacks included; see SetTick.
+        private static void RecordOnlineTick(FrogSimulation simulation, int tick, FrogInput[] inputs)
+        {
+            if (mode == Mode.Recording && recordingOnline)
+                recording.SetTick(tick, inputs, Checksum(simulation));
+        }
+
+        /// <summary>
+        /// Online: keeps the Ticks up to <paramref name="lastTick"/>, the last one both Peers
+        /// confirmed; later ones may still have run on predictions.
+        /// </summary>
+        public static void KeepOnlineTicksThrough(int lastTick, bool roundOver)
+        {
+            if (mode != Mode.Recording || !recordingOnline)
+                return;
+            recording.Truncate(lastTick + 1);
+            if (roundOver)
+                recording.EndedWithRoundOver = true;
         }
 
         /// <summary>While replaying, fills <paramref name="inputs"/> with the next Tick's recorded inputs.</summary>
@@ -184,6 +232,7 @@ namespace FrogSmashers.Netcode
             else if (mode == Mode.Replaying)
                 Log("replay result=INTERRUPTED ticks=" + replayTick + " of " + replay.TickCount);
             mode = Mode.Idle;
+            recordingOnline = false;
         }
 
         private static void Finish(bool passed, string reason)
@@ -195,7 +244,10 @@ namespace FrogSmashers.Netcode
             mode = Mode.Idle;
             replay = null;
             SimulationDriver.HaltCurrentScene();
-            SceneManager.LoadScene("JoinScreen");
+            if (AutoReplay)
+                Application.Quit();
+            else
+                SceneManager.LoadScene("JoinScreen");
         }
 
         private static void Save()
@@ -203,7 +255,8 @@ namespace FrogSmashers.Netcode
             try
             {
                 Directory.CreateDirectory(Folder);
-                string name = "round-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + recording.Level + Extension;
+                string online = recordingOnline ? "-online-slot" + recordingSlot : "";
+                string name = "round-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + recording.Level + online + Extension;
                 string path = Path.Combine(Folder, name);
                 using (var file = File.Create(path))
                     recording.Write(file);

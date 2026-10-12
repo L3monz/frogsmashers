@@ -64,6 +64,26 @@ namespace FrogSmashers.Netcode
             TickCount++;
         }
 
+        /// <summary>
+        /// Records a run of <paramref name="tick"/>, for online Rounds, where a Rollback runs past
+        /// Ticks again with corrected inputs. A run of the next Tick appends; a run of an earlier
+        /// Tick overwrites it and drops the Ticks after it, which the Rollback is about to run
+        /// again too. What's left at the end is each Tick's final run.
+        /// </summary>
+        public void SetTick(int tick, FrogInput[] tickInputs, uint checksum)
+        {
+            if (tick < 0 || tick > TickCount)
+                throw new ArgumentOutOfRangeException(nameof(tick), "Tick " + tick + " skips ahead of the " + TickCount + " recorded.");
+            TickCount = tick;
+            AddTick(tickInputs, checksum);
+        }
+
+        /// <summary>Keeps only the first <paramref name="ticks"/> Ticks.</summary>
+        public void Truncate(int ticks)
+        {
+            TickCount = Math.Max(0, Math.Min(TickCount, ticks));
+        }
+
         public void GetInputs(int tick, FrogInput[] into)
         {
             for (int slot = 0; slot < Slots; slot++)

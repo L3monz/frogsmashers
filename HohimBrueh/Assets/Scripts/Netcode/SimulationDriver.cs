@@ -204,10 +204,8 @@ namespace FrogSmashers.Netcode
             else if (isRound)
                 RoundSeed = ReplayCheck.SeedForRound(RoundSeed);
             SimRng.Seed(RoundSeed);
-            // Online Rounds aren't recorded yet: a first run uses predicted inputs, so a
-            // recording would need each Tick's final inputs, after any Rollback.
-            if (isRound && !online)
-                ReplayCheck.BeginRound(simulation, RoundSeed);
+            if (isRound)
+                ReplayCheck.BeginRound(simulation, RoundSeed, online);
 
             instance.online = null;
             instance.waitTicks = 0;
@@ -241,6 +239,8 @@ namespace FrogSmashers.Netcode
         {
             if (instance == null || instance.simulation != simulation)
                 return;
+            if (instance.online != null)
+                ReplayCheck.KeepOnlineTicksThrough(instance.online.LastConfirmedFrame, roundOver: false);
             ReplayCheck.EndRound();
             instance.simulation = null;
             instance.session = null;
@@ -257,7 +257,10 @@ namespace FrogSmashers.Netcode
             if (instance == null)
                 return;
             if (instance.online != null)
+            {
+                ReplayCheck.KeepOnlineTicksThrough(instance.online.LastConfirmedFrame, roundOver: false);
                 instance.online.Disconnect();
+            }
             if (instance.draining != null)
                 instance.draining.Disconnect();
             instance.online = null;
@@ -487,7 +490,11 @@ namespace FrogSmashers.Netcode
                 return;
             }
 
-            if (!online.AddLocalInput(FrogSmashers.Online.OnlineMatch.LocalSlot, InputSampler.SampleLocal()))
+            int localSlot = FrogSmashers.Online.OnlineMatch.LocalSlot;
+            FrogInput localInput = FrogSmashers.Online.OnlineMatch.BotInput
+                ? InputSampler.Scripted(online.FrameCount, localSlot)
+                : InputSampler.SampleLocal();
+            if (!online.AddLocalInput(localSlot, localInput))
             {
                 TotalOnlineRefusedTicks++;
                 return;
@@ -527,6 +534,7 @@ namespace FrogSmashers.Netcode
             Debug.Log("[ONLINE] Round over at Tick " + simulation.RoundOverTick + " (confirmed), "
                 + online.RollbackCount + " Rollbacks, " + online.RolledBackFrames + " Ticks run again");
             roundEnded = true;
+            ReplayCheck.KeepOnlineTicksThrough(simulation.RoundOverTick, roundOver: true);
             StartDraining();
             GameController.FinishRoundAfterSimulation();
             return true;

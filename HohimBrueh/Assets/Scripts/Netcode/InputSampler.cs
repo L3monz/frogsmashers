@@ -52,6 +52,23 @@ namespace FrogSmashers.Netcode
             return FrogInput.FromBits((uint)(byte)x | ((uint)(byte)y << 8) | (buttons << 16));
         }
 
+        /// <summary>
+        /// Development testing: input that changes every few Ticks (run, jump, attack), so an
+        /// automatic online test has real mispredictions and Rollbacks. Different per Slot.
+        /// </summary>
+        public static FrogInput Scripted(int tick, int slot)
+        {
+            uint x = unchecked((uint)(tick / 9) * 2654435761u + (uint)slot * 40503u);
+            uint pick = x >> 28;
+            return FrogInput.Make(
+                left: pick % 4 == 0,
+                right: pick % 4 == 1,
+                up: pick % 5 == 2,
+                a: pick % 3 == 0,
+                b: pick % 7 == 3,
+                x: pick % 6 == 5);
+        }
+
         public static void Sample(FrogInput[] into)
         {
             for (int slot = 0; slot < into.Length; slot++)

@@ -121,6 +121,22 @@ server on AWS. Its README covers logs, alarms and setup. When the game and the s
 change their shared protocol, deploy the server first: it accepts the current and the previous
 protocol version.
 
+## Testing online on one PC
+
+`tools/online-test.ps1` starts two windowed copies of the development build that play each
+other (one hosts, one joins on 127.0.0.1):
+
+```
+powershell -ExecutionPolicy Bypass -File tools\online-test.ps1                      # play one window yourself
+powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 -Latency 100 -Loss 5 # simulated bad network
+powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 -Bot -LeaveAfter 45 -Latency 100 -Loss 5
+```
+
+The last one needs nobody: both frogs play scripted input and leave after 45 s. Each copy saves
+its replay recording; `tools/compare-recordings.py --latest-online` (from WSL) checks the two are
+identical Tick for Tick, and `FrogSmashers.exe -replay-newest` replays the newest recording
+offline and quits, logging `replay result=PASS` or the first mismatch.
+
 ## Diagnosing
 
 - Player builds log to `%USERPROFILE%\AppData\LocalLow\DefaultCompany\Free Lives Template\Player.log`.
