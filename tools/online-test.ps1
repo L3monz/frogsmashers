@@ -1,6 +1,6 @@
 # Starts two windowed copies of the development build that play each other online on this PC.
 #
-#   powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 [-Server] [-Relay] [-Latency 100] [-Loss 5] [-Port 9100] [-LeaveAfter 30] [-Bot]
+#   powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 [-Server] [-Relay] [-Latency 100] [-Loss 5] [-Port 9100] [-LeaveAfter 30] [-Bot] [-PointsToWin 1]
 #
 # Without -Server, one copy hosts on a port and the other joins it on 127.0.0.1 (no server).
 # With -Server, they meet through the rendezvous server: the host creates a Room, this script
@@ -10,9 +10,10 @@
 # -LeaveAfter N ends the Match after N seconds, so both copies save their replay recordings
 # (persistentDataPath\replays); compare them with tools/compare-recordings.py.
 # -Bot makes both frogs play scripted input, for a test nobody has to play.
+# -PointsToWin N ends each Round at N points, so bots reach the Round end and the next Level.
 # Each copy writes its own log next to the exe: host.log and join.log.
 # Needs a development build (tools/build.sh dev): release builds run one copy at a time.
-param([switch]$Server, [switch]$Relay, [int]$Latency = 0, [int]$Loss = 0, [int]$Port = 9100, [int]$LeaveAfter = 0, [switch]$Bot)
+param([switch]$Server, [switch]$Relay, [int]$Latency = 0, [int]$Loss = 0, [int]$Port = 9100, [int]$LeaveAfter = 0, [switch]$Bot, [int]$PointsToWin = 0)
 
 $dir = Join-Path $PSScriptRoot "..\builds\dev"
 $exe = Join-Path $dir "FrogSmashers.exe"
@@ -21,6 +22,7 @@ if (-not (Test-Path $exe)) { throw "No development build at $exe. Run tools/buil
 $common = @("-screen-fullscreen", "0", "-screen-width", "800", "-screen-height", "450",
             "-online-latency", "$Latency", "-online-loss", "$Loss", "-online-leave-after", "$LeaveAfter")
 if ($Bot) { $common += "-online-bot" }
+if ($PointsToWin -gt 0) { $common += @("-dev-points-to-win", "$PointsToWin") }
 
 $hostLog = Join-Path $dir "host.log"
 $joinLog = Join-Path $dir "join.log"

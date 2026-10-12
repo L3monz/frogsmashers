@@ -132,7 +132,9 @@ powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 -Latency 100 -Los
 powershell -ExecutionPolicy Bypass -File tools\online-test.ps1 -Bot -LeaveAfter 45 -Latency 100 -Loss 5
 ```
 
-The last one needs nobody: both frogs play scripted input and leave after 45 s. Each copy saves
+The last one needs nobody: both frogs are bots that chase and hit each other, and leave after 45 s.
+Add `-PointsToWin 1` to make each Round end at the first point, so the bots play
+a whole Match through every Level. Each copy saves
 its replay recording; `tools/compare-recordings.py --latest-online` (from WSL) checks the two are
 identical Tick for Tick, and `FrogSmashers.exe -replay-newest` replays the newest recording
 offline and quits, logging `replay result=PASS` or the first mismatch.

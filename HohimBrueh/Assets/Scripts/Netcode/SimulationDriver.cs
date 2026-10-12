@@ -492,7 +492,7 @@ namespace FrogSmashers.Netcode
 
             int localSlot = FrogSmashers.Online.OnlineMatch.LocalSlot;
             FrogInput localInput = FrogSmashers.Online.OnlineMatch.BotInput
-                ? InputSampler.Scripted(online.FrameCount, localSlot)
+                ? InputSampler.Chase(online.FrameCount, localSlot)
                 : InputSampler.SampleLocal();
             if (!online.AddLocalInput(localSlot, localInput))
             {

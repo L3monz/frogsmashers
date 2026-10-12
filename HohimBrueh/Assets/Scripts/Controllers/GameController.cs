@@ -63,6 +63,20 @@ public class GameController : MonoBehaviour, ISimulated
 
     public static bool isTeamMode; // sim-state: exclude Round Setup
 
+    // Development builds: -dev-points-to-win N ends free-for-all Rounds at N points, so automatic
+    // online tests reach the Round end, the score screen and the next Level. 0 keeps the normal
+    // rule. Read once at startup; both Peers of a test must use the same value.
+    static readonly int devPointsToWin = ReadDevPointsToWin(); // sim-state: exclude constant for the whole run
+
+    static int ReadDevPointsToWin()
+    {
+        if (!Debug.isDebugBuild)
+            return 0;
+        string[] args = System.Environment.GetCommandLineArgs();
+        int index = System.Array.IndexOf(args, "-dev-points-to-win");
+        return index >= 0 && index + 1 < args.Length && int.TryParse(args[index + 1], out int points) ? points : 0;
+    }
+
     public static bool playersCanDropIn; // sim-state: exclude Round Setup
 
     public static bool isShowDown; // sim-state: exclude Round Setup
@@ -956,7 +970,9 @@ public class GameController : MonoBehaviour, ISimulated
             }
             else
             {
-                if (activePlayers.Count == 2)
+                if (devPointsToWin > 0)
+                    wonRound = gotPoint.score >= devPointsToWin;
+                else if (activePlayers.Count == 2)
                     wonRound = gotPoint.score >= 5;
                 else
                     wonRound = gotPoint.score >= 10;

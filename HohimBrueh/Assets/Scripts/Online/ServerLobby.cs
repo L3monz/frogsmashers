@@ -70,8 +70,10 @@ namespace FrogSmashers.Online
         public OnlineMatchStart Ready { get; private set; }
 
         /// <summary>
-        /// A lobby for our server. Development options: -rendezvous host:port picks another server
-        /// (a local one, for example), and -online-relay skips the direct connection.
+        /// A lobby for our server. Options for testing: -rendezvous host:port picks another server
+        /// (a local one, for example), and -online-relay skips the direct connection. Both work in
+        /// release builds too, so a playtest can force the relay from an installed copy; either
+        /// player forcing it is enough.
         /// </summary>
         public static ServerLobby FromCommandLine(string[] args, NetworkConditions conditions)
         {
@@ -85,7 +87,7 @@ namespace FrogSmashers.Online
                 if (parts.Length > 1)
                     port = CommandLine.ParseInt(parts[1], port);
             }
-            bool forceRelay = UnityEngine.Debug.isDebugBuild && CommandLine.Has(args, "-online-relay");
+            bool forceRelay = CommandLine.Has(args, "-online-relay");
             return new ServerLobby(host, port, forceRelay, conditions);
         }
 

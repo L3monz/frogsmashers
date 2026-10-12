@@ -55,7 +55,7 @@ namespace FrogSmashers.Online
         /// <summary>True when the two games talk through the relay server. For the logs.</summary>
         public static bool Relayed => instance != null && instance.relayed;
 
-        /// <summary>Development builds with -online-bot: the local Player plays scripted input.</summary>
+        /// <summary>Development builds with -online-bot: a bot plays the local Player, chasing and hitting the other frog.</summary>
         public static bool BotInput { get; private set; }
 
         /// <summary>Starts the Online Match a lobby has connected.</summary>

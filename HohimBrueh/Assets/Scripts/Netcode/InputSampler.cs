@@ -69,6 +69,59 @@ namespace FrogSmashers.Netcode
                 x: pick % 6 == 5);
         }
 
+        // Ticks each Slot's chase bot has held its swing.
+        static readonly int[] chaseCharge = new int[6];
+
+        /// <summary>
+        /// Development testing: walks to the nearest other frog, charges a swing on the way and
+        /// releases it in reach, so an automatic online test scores points and reaches the Round
+        /// end. It reads this machine's view of the frogs, which may be a prediction; that is
+        /// fine, because the result is only input, sent to the other Peer like a player's.
+        /// While either frog is missing (respawning), it plays <see cref="Scripted"/> input.
+        /// </summary>
+        public static FrogInput Chase(int tick, int slot)
+        {
+            var self = Player.BySlot(slot);
+            Character me = self != null ? self.character : null;
+            Character target = null;
+            float best = float.MaxValue;
+            for (int other = 0; other < 6 && me != null; other++)
+            {
+                var player = other == slot ? null : Player.BySlot(other);
+                Character character = player != null ? player.character : null;
+                if (character == null)
+                    continue;
+                float distance = (character.transform.position - me.transform.position).sqrMagnitude;
+                if (distance < best)
+                {
+                    best = distance;
+                    target = character;
+                }
+            }
+            if (target == null)
+            {
+                chaseCharge[slot] = 0;
+                return Scripted(tick, slot);
+            }
+
+            // Holding the swing roots the frog, so it walks first and charges only in reach.
+            // A charge, once started, runs its full length and then releases.
+            UnityEngine.Vector3 d = target.transform.position - me.transform.position;
+            bool inReach = System.Math.Abs(d.x) < 3.5f && System.Math.Abs(d.y) < 2.5f;
+            bool charging = chaseCharge[slot] > 0 || inReach;
+            bool release = charging && chaseCharge[slot] >= 20;
+            chaseCharge[slot] = release || !charging ? 0 : chaseCharge[slot] + 1;
+
+            // Jumps when the target is above, and now and then anyway, to climb out of pits
+            // and over walls. Walking toward the target also faces it, so the swing goes its way.
+            bool jump = !charging && (d.y > 1.5f || (tick + slot * 37) % 90 < 6);
+            return FrogInput.Make(
+                left: d.x < -0.5f,
+                right: d.x > 0.5f,
+                a: jump,
+                x: charging && !release);
+        }
+
         public static void Sample(FrogInput[] into)
         {
             for (int slot = 0; slot < into.Length; slot++)
