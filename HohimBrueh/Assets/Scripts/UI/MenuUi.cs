@@ -17,13 +17,33 @@ namespace FrogSmashers
 
         public bool Up, Down, Left, Right, Confirm, Back;
 
+        /// <summary>
+        /// While the player types letters (a Room Code), letter keys are text, not buttons: the
+        /// WASD layout and the M confirm key are ignored. Arrows, Enter, Space, Comma, Escape and
+        /// the gamepad still work.
+        /// </summary>
+        public bool Typing;
+
+        /// <summary>Any menu button was pressed this frame.</summary>
+        public bool Any => Up || Down || Left || Right || Confirm || Back;
+
         // The first read only learns what is already held, so a button held while a menu
         // opens doesn't count as a press in it.
         private bool primed;
 
         public void Read()
         {
-            InputReader.GetInput(gamepad);
+            // The device-less GetInput reads the keyboard when no gamepad is connected, and it
+            // doesn't keep the previous frame's buttons, so a held key would look new every
+            // frame. Read the gamepad only when there is one, and keep its history here.
+            KeepPrevious(gamepad);
+            if (UnityEngine.InputSystem.Gamepad.current != null)
+                InputReader.GetInput(gamepad);
+            else
+            {
+                InputReader.ClearInputState(gamepad);
+                gamepad.start = false;
+            }
             InputReader.GetInput(InputReader.Device.Keyboard1, keyboard1);
             InputReader.GetInput(InputReader.Device.Keyboard2, keyboard2);
             if (!primed)
@@ -37,18 +57,36 @@ namespace FrogSmashers
             Down = Pressed(s => s.down, s => s.wasDown);
             Left = Pressed(s => s.left, s => s.wasLeft);
             Right = Pressed(s => s.right, s => s.wasRight);
-            Confirm = Pressed(s => s.aButton, s => s.wasAButton) || Pressed(s => s.start, s => s.wasStart);
+            Confirm = Pressed(s => s.start, s => s.wasStart)
+                || (Typing ? Input.GetKeyDown(KeyCode.Space) || Edge(gamepad, s => s.aButton, s => s.wasAButton)
+                           : Pressed(s => s.aButton, s => s.wasAButton));
             Back = Pressed(s => s.bButton, s => s.wasBButton) || Input.GetKeyDown(KeyCode.Escape);
         }
 
+        private static void KeepPrevious(InputState s)
+        {
+            s.wasAButton = s.aButton;
+            s.wasBButton = s.bButton;
+            s.wasXButton = s.xButton;
+            s.wasYButton = s.yButton;
+            s.wasLeft = s.left;
+            s.wasRight = s.right;
+            s.wasUp = s.up;
+            s.wasDown = s.down;
+            s.wasStart = s.start;
+        }
+
+        // Keyboard 2 (WASD, T, Y, Space) is all letters except Space, so it sits out while typing.
         private bool Pressed(System.Func<InputState, bool> now, System.Func<InputState, bool> before) =>
-            (now(gamepad) && !before(gamepad)) || (now(keyboard1) && !before(keyboard1)) || (now(keyboard2) && !before(keyboard2));
+            Edge(gamepad, now, before) || Edge(keyboard1, now, before) || (!Typing && Edge(keyboard2, now, before));
+
+        private static bool Edge(InputState s, System.Func<InputState, bool> now, System.Func<InputState, bool> before) =>
+            now(s) && !before(s);
     }
 
     /// <summary>
-    /// Builds screen-space UI in code, in the join screen's style: its pixel font and, for full
-    /// screens, its background. Built in code rather than placed in scenes, so the original
-    /// scene files stay untouched.
+    /// Builds screen-space UI in code, in the join screen's style (its pixel font). Built in
+    /// code rather than placed in scenes, so the original scene files stay untouched.
     /// </summary>
     public static class MenuUi
     {
@@ -80,14 +118,13 @@ namespace FrogSmashers
             return root.transform;
         }
 
-        /// <summary>The join screen's background, filling the screen.</summary>
-        public static void Background(Transform parent)
+        /// <summary>Darkens the whole screen, so text reads over the scene behind it.</summary>
+        public static void Dim(Transform parent, float alpha)
         {
-            var go = new GameObject("Background");
+            var go = new GameObject("Dim");
             go.transform.SetParent(parent, false);
             var image = go.AddComponent<Image>();
-            image.sprite = Resources.Load<Sprite>("Backgrounds/join_screen_v1");
-            image.color = image.sprite != null ? Color.white : Color.black;
+            image.color = new Color(0f, 0f, 0f, alpha);
             image.raycastTarget = false;
             var rect = image.rectTransform;
             rect.anchorMin = Vector2.zero;
@@ -125,5 +162,8 @@ namespace FrogSmashers
 
         /// <summary>The join screen's prompt colour: white fading to black and back.</summary>
         public static Color Pulse() => Color.Lerp(Color.white, Color.black, Mathf.PingPong(Time.time * 3f, 1f));
+
+        /// <summary>The same pulse for a dark background, where black would vanish: white to yellow.</summary>
+        public static Color PulseOnDark() => Color.Lerp(Color.white, new Color(1f, 0.8f, 0.1f), Mathf.PingPong(Time.time * 3f, 1f));
     }
 }

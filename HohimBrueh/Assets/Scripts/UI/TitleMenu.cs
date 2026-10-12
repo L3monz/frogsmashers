@@ -18,6 +18,12 @@ namespace FrogSmashers
         private bool ready;
         private int shownOnFrame;
 
+        // The title scene's own "START" prompt. The menu replaces it, so it never shows.
+        private Renderer[] startPrompt;
+
+        /// <summary>A menu button was pressed this frame, shown or not. The title uses it to skip its animation.</summary>
+        public bool AnyPress => input.Any;
+
         /// <summary>Adds the menu to the title scene, hidden until <see cref="Show"/>.</summary>
         public static TitleMenu Create()
         {
@@ -28,6 +34,8 @@ namespace FrogSmashers
             menu.lines = new Text[Items.Length];
             for (int i = 0; i < Items.Length; i++)
                 menu.lines[i] = MenuUi.Line(root, 40, -170f - i * 50f);
+            var start = GameObject.Find("Start");
+            menu.startPrompt = start != null ? start.GetComponentsInChildren<Renderer>() : new Renderer[0];
             return menu;
         }
 
@@ -35,6 +43,13 @@ namespace FrogSmashers
         public void Show()
         {
             ready = true;
+        }
+
+        // After the title's animations have run, which may switch the prompt back on.
+        private void LateUpdate()
+        {
+            foreach (var r in startPrompt)
+                if (r != null) r.enabled = false;
         }
 
         private void Update()

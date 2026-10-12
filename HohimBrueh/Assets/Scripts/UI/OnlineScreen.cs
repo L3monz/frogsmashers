@@ -5,18 +5,24 @@ using UnityEngine.UI;
 namespace FrogSmashers
 {
     /// <summary>
-    /// The Online screen, over the title screen: create a Room and wait for a friend, or join one
-    /// by its code. It talks only to <see cref="ILobby"/>, so it doesn't know there's a server or
-    /// what a Room Code means; the lobby says which characters a code can contain.
+    /// The Online screen, over the dimmed title screen (its music keeps playing): create a Room
+    /// and wait for a friend, or join one by its code. It talks only to <see cref="ILobby"/>, so it
+    /// doesn't know there's a server or what a Room Code means; the lobby says which characters a
+    /// code can contain.
     ///
-    /// Works the same on a gamepad and a keyboard: up and down choose or change a letter, left
-    /// and right move between letters, confirm (A, M, T, Enter or Space) accepts, back (B, Comma,
-    /// Y or Escape) goes back.
+    /// Works on a gamepad and a keyboard: up and down choose or change a letter, left and right
+    /// move between letters, confirm (A, M, T, Enter or Space) accepts, back (B, Comma, Y or
+    /// Escape) goes back. On a keyboard the code can also be typed or pasted, and the host can
+    /// copy theirs.
+    ///
+    /// Once both are connected, a countdown gives either player a few seconds to back out
+    /// before the Match starts.
     /// </summary>
     public sealed class OnlineScreen : MonoBehaviour
     {
-        private enum Page { Menu, Hosting, Picking, Joining, Failed }
+        private enum Page { Menu, Hosting, Picking, Joining, Countdown, Failed }
 
+        private const float CountdownSeconds = 5f;
         private static readonly string[] MenuItems = { "CREATE ROOM", "JOIN ROOM", "BACK" };
 
         private static OnlineScreen open;
@@ -34,6 +40,11 @@ namespace FrogSmashers
         private int cursor;
         private string alphabet;
 
+        // Connected and counting down; the Match starts when the countdown ends.
+        private OnlineMatchStart starting;
+        private float startAt;
+        private float copiedUntil;
+
         public static bool IsOpen => open != null;
 
         public static void Open()
@@ -41,30 +52,32 @@ namespace FrogSmashers
             if (open != null)
                 return;
             Transform root = MenuUi.Canvas("OnlineScreen", 200);
-            MenuUi.Background(root);
+            MenuUi.Dim(root, 0.8f);
             open = root.gameObject.AddComponent<OnlineScreen>();
             open.Build(root);
         }
 
         private void Build(Transform root)
         {
-            title = MenuUi.Line(root, 64, 230f);
+            title = MenuUi.Line(root, 56, 200f);
             title.text = "ONLINE";
-            big = MenuUi.Line(root, 120, 60f);
+            big = MenuUi.Line(root, 120, 50f);
             line1 = MenuUi.Line(root, 28, -60f, plainFont: true);
-            line2 = MenuUi.Line(root, 22, -110f, plainFont: true);
-            hint = MenuUi.Line(root, 18, -300f, plainFont: true);
+            line2 = MenuUi.Line(root, 22, -105f, plainFont: true);
+            hint = MenuUi.Line(root, 18, -290f, plainFont: true);
             hint.color = new Color(1f, 1f, 1f, 0.75f);
             menuLines = new Text[MenuItems.Length];
             for (int i = 0; i < MenuItems.Length; i++)
-                menuLines[i] = MenuUi.Line(root, 44, 40f - i * 60f);
+                menuLines[i] = MenuUi.Line(root, 44, 60f - i * 60f);
             ShowPage(Page.Menu);
         }
 
         private void ShowPage(Page next)
         {
             page = next;
+            input.Typing = next == Page.Picking;
             big.text = line1.text = line2.text = "";
+            line1.color = line2.color = Color.white;
             foreach (var line in menuLines)
                 line.gameObject.SetActive(next == Page.Menu);
             if (letters != null)
@@ -79,14 +92,17 @@ namespace FrogSmashers
                     hint.text = "Up/Down: choose    Confirm: select    Back: return";
                     break;
                 case Page.Hosting:
+                    hint.text = "C: copy the code    Back: cancel";
+                    break;
                 case Page.Joining:
+                case Page.Countdown:
                     hint.text = "Back: cancel";
                     break;
                 case Page.Picking:
-                    hint.text = "Up/Down: change letter    Left/Right: move    Confirm: join    Back: return";
+                    hint.text = "Type the code, or use Up/Down and Left/Right\nCtrl+V: paste    Enter: join    Esc: back";
                     letters = new Text[code.Length];
                     for (int i = 0; i < letters.Length; i++)
-                        letters[i] = MenuUi.Line(transform, 120, 60f, x: (i - (letters.Length - 1) / 2f) * 110f);
+                        letters[i] = MenuUi.Line(transform, 120, 50f, x: (i - (letters.Length - 1) / 2f) * 110f);
                     break;
                 case Page.Failed:
                     hint.text = "Confirm: OK";
@@ -106,6 +122,7 @@ namespace FrogSmashers
                 case Page.Hosting:
                 case Page.Joining: UpdateConnecting(); break;
                 case Page.Picking: UpdatePicking(); break;
+                case Page.Countdown: UpdateCountdown(); break;
                 case Page.Failed:
                     if (input.Confirm || input.Back)
                         ShowPage(Page.Menu);
@@ -120,7 +137,7 @@ namespace FrogSmashers
             for (int i = 0; i < menuLines.Length; i++)
             {
                 menuLines[i].text = MenuItems[i];
-                menuLines[i].color = i == selected ? MenuUi.Pulse() : new Color(1f, 1f, 1f, 0.7f);
+                menuLines[i].color = i == selected ? MenuUi.PulseOnDark() : new Color(1f, 1f, 1f, 0.7f);
             }
 
             if (input.Back || (input.Confirm && selected == 2))
@@ -162,8 +179,9 @@ namespace FrogSmashers
             if (input.Down) code[cursor] = (code[cursor] + alphabet.Length - 1) % alphabet.Length;
             if (input.Left) cursor = (cursor + code.Length - 1) % code.Length;
             if (input.Right) cursor = (cursor + 1) % code.Length;
+            TypeLetters();
 
-            if (input.Confirm)
+            if (input.Confirm || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 var text = new System.Text.StringBuilder();
                 foreach (int index in code)
@@ -177,9 +195,54 @@ namespace FrogSmashers
             for (int i = 0; i < letters.Length; i++)
             {
                 letters[i].text = alphabet[code[i]].ToString();
-                letters[i].color = i == cursor ? MenuUi.Pulse() : Color.white;
+                letters[i].color = i == cursor ? MenuUi.PulseOnDark() : Color.white;
             }
             line1.text = "Enter your friend's Room Code";
+        }
+
+        // Keyboard entry: a typed letter fills the current place and moves on; Backspace moves
+        // back; Ctrl+V pastes a whole code. Characters that can't be in a code are ignored.
+        private void TypeLetters()
+        {
+            bool control = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            if (control && Input.GetKeyDown(KeyCode.V))
+            {
+                Paste(GUIUtility.systemCopyBuffer);
+                return;
+            }
+            if (control)
+                return;
+
+            foreach (char typed in Input.inputString)
+            {
+                if (typed == '\b')
+                {
+                    cursor = Mathf.Max(0, cursor - 1);
+                    continue;
+                }
+                int index = alphabet.IndexOf(char.ToUpperInvariant(typed));
+                if (index < 0)
+                    continue;
+                code[cursor] = index;
+                cursor = Mathf.Min(code.Length - 1, cursor + 1);
+            }
+        }
+
+        private void Paste(string pasted)
+        {
+            if (string.IsNullOrEmpty(pasted))
+                return;
+            var found = new System.Collections.Generic.List<int>();
+            foreach (char c in pasted)
+            {
+                int index = alphabet.IndexOf(char.ToUpperInvariant(c));
+                if (index >= 0)
+                    found.Add(index);
+            }
+            if (found.Count != code.Length)
+                return;
+            found.CopyTo(code);
+            cursor = code.Length - 1;
         }
 
         private void UpdateConnecting()
@@ -201,26 +264,68 @@ namespace FrogSmashers
                 case LobbyStatus.WaitingForFriend:
                     big.text = lobby.RoomCode;
                     line1.text = "Waiting for your friend...";
-                    line2.text = "Give them this Room Code";
+                    if (Input.GetKeyDown(KeyCode.C))
+                    {
+                        GUIUtility.systemCopyBuffer = lobby.RoomCode;
+                        copiedUntil = Time.unscaledTime + 2f;
+                    }
+                    line2.text = Time.unscaledTime < copiedUntil ? "Copied!" : "Give them this Room Code";
                     break;
                 case LobbyStatus.Connecting:
                     line1.text = "Connecting to your friend...";
                     break;
                 case LobbyStatus.Failed:
-                    string reason = lobby.FailureReason;
-                    lobby = null;
-                    ShowPage(Page.Failed);
-                    line1.text = reason;
-                    line1.color = Color.white;
+                    Fail(lobby.FailureReason);
                     return;
                 case LobbyStatus.Ready:
-                    var start = lobby.Ready;
+                    starting = lobby.Ready;
                     lobby = null;
-                    Close();
-                    OnlineMatch.Begin(start);
+                    startAt = Time.unscaledTime + CountdownSeconds;
+                    ShowPage(Page.Countdown);
                     return;
             }
-            line1.color = MenuUi.Pulse();
+            line1.color = MenuUi.PulseOnDark();
+        }
+
+        private void UpdateCountdown()
+        {
+            IOnlineLink link = starting.Link;
+            link.Poll();
+            if (link.State == LinkState.Closed)
+            {
+                starting = null;
+                Fail(link.CloseReason);
+                return;
+            }
+            if (input.Back)
+            {
+                link.Close("You left.");
+                starting = null;
+                ShowPage(Page.Menu);
+                return;
+            }
+
+            float left = startAt - Time.unscaledTime;
+            if (left <= 0f)
+            {
+                var start = starting;
+                starting = null;
+                Close();
+                OnlineMatch.Begin(start);
+                return;
+            }
+            big.text = Mathf.CeilToInt(left).ToString();
+            line1.text = "Your friend is here! Starting...";
+            line1.color = MenuUi.PulseOnDark();
+            if (Debug.isDebugBuild && starting.Relayed)
+                line2.text = "(relayed)";
+        }
+
+        private void Fail(string reason)
+        {
+            lobby = null;
+            ShowPage(Page.Failed);
+            line1.text = reason;
         }
 
         private void Close()
@@ -237,6 +342,8 @@ namespace FrogSmashers
             // Leaving the title scene with a Room open (it shouldn't happen) still leaves the Room.
             if (lobby != null)
                 lobby.Leave();
+            if (starting != null)
+                starting.Link.Close("You left.");
             if (open == this)
                 open = null;
         }

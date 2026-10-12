@@ -64,6 +64,25 @@ public class IntroAnimController : MonoBehaviour
     InputState input;
     FrogSmashers.TitleMenu titleMenu;
 
+    // Set when coming back to the title from another screen: show the menu straight away
+    // instead of playing the whole animation again.
+    static bool skipNextIntro;
+
+    public static void SkipNextIntro()
+    {
+        skipNextIntro = true;
+    }
+
+    // Jumps near the end of the animation. Its last events (the camera pan, the music) still
+    // run, a moment later.
+    void SkipIntro()
+    {
+        animator.CrossFade(animator.GetCurrentAnimatorStateInfo(-1).shortNameHash, 0f, 0, 0.95f);
+        cameraPanning = true;
+        cameraPanDelay = 0f;
+        cameraPosM = 1f;
+    }
+
     float shakeDelay;
     Vector3 shakeOffset = Vector3.zero;
     // Update is called once per frame
@@ -79,6 +98,11 @@ public class IntroAnimController : MonoBehaviour
         }
 
         InputReader.GetInput(input);
+        if (skipNextIntro)
+        {
+            skipNextIntro = false;
+            SkipIntro();
+        }
         if (cameraPosM == 1f)
         {
             // The menu chooses between local and online play.
@@ -86,15 +110,14 @@ public class IntroAnimController : MonoBehaviour
         }
         else
         {
-            if (input.start && !input.wasStart)
+            // Any menu button skips the animation, and the menu appears.
+            if ((input.start && !input.wasStart) || titleMenu.AnyPress)
             {
-                animator.CrossFade(animator.GetCurrentAnimatorStateInfo(-1).shortNameHash, 0f, 0, 0.95f);
-                cameraPanning = true;
-                cameraPanDelay = 0f;
-                cameraPosM = 1f;
+                SkipIntro();
             }
         }
-        if (cameraPosM > 0.55f)
+        // Behind the Online screen the music plays on, but the bat hits stop.
+        if (cameraPosM > 0.55f && !FrogSmashers.OnlineScreen.IsOpen)
         {
             shakeDelay -= Time.deltaTime;
             if (shakeDelay < 0f)

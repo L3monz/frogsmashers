@@ -492,9 +492,26 @@ public class GameController : MonoBehaviour, ISimulated
         if (state == GameState.JoinScreen)
         {
 
+            // Back to the title: Escape, or B on a device that hasn't joined. (A joined player's B
+            // changes their colour.)
+            // sim-guard: allow leaves the join screen for the title; not simulation
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                IntroAnimController.SkipNextIntro();
+                SceneManager.LoadScene("TitleScreen");
+                return;
+            }
+
             for (int i = inactivePlayers.Count - 1; i >= 0; i--)
             {
                 InputReader.GetInput(inactivePlayers[i].inputDevice, input);
+
+                if (input.bButton)
+                {
+                    IntroAnimController.SkipNextIntro();
+                    SceneManager.LoadScene("TitleScreen");
+                    return;
+                }
 
                 if (input.xButton)
                 {
@@ -605,6 +622,12 @@ public class GameController : MonoBehaviour, ISimulated
 
         if (joinGameModeText != null)
             joinGameModeText.text = isTeamMode ? "TEAM" : "FREE  FOR  ALL";
+
+        // How to get back to the title menu, in small type at the bottom.
+        Transform hint = FrogSmashers.MenuUi.Canvas("JoinScreenHint", 100);
+        var line = FrogSmashers.MenuUi.Line(hint, 16, -345f, plainFont: true);
+        line.text = "Esc, or B before joining: back";
+        line.color = new Color(1f, 1f, 1f, 0.7f);
     }
 
     bool CheckReadyPlayers()
