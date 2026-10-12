@@ -562,10 +562,15 @@ namespace FrogSmashers.Netcode
                         ReportOnlineDesync(e);
                         break;
                     case SessionEventKind.SyncFailed:
-                        FrogSmashers.Online.OnlineMatch.End(e.Failure == SyncFailure.BuildId || e.Failure == SyncFailure.ProtocolVersion
+                    {
+                        // The same reason on both machines: this Peer may close before the other
+                        // has handled the refusal, so the reason goes with the goodbye too.
+                        string reason = e.Failure == SyncFailure.BuildId || e.Failure == SyncFailure.ProtocolVersion
                             ? "Your friend is on a different version of the game."
-                            : "The two games disagree on the Round (" + e.Failure + ").");
+                            : "The two games disagree on the Round (" + e.Failure + ").";
+                        FrogSmashers.Online.OnlineMatch.End(reason, reason);
                         return false;
+                    }
                     case SessionEventKind.Disconnected:
                         FrogSmashers.Online.OnlineMatch.End("Your friend left or the connection was lost.");
                         return false;

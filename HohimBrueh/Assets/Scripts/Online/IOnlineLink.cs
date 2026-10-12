@@ -34,7 +34,11 @@ namespace FrogSmashers.Online
 
         bool TryReceiveMatchMessage(out byte[] message);
 
-        /// <summary>Tell the other Peer this one is leaving, and close.</summary>
-        void Close(string reason);
+        /// <summary>
+        /// Tell the other Peer this one is leaving, and close. <paramref name="reasonForFriend"/>
+        /// travels with the goodbye and becomes the other Peer's <see cref="CloseReason"/>; when
+        /// it's null, the other Peer just hears that its friend left.
+        /// </summary>
+        void Close(string reason, string reasonForFriend = null);
     }
 }

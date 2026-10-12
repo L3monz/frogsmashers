@@ -157,13 +157,17 @@ namespace FrogSmashers.Online
 
         // ---- Lifetime ---------------------------------------------------------------------
 
-        public void Close(string reason)
+        public void Close(string reason, string reasonForFriend = null)
         {
             if (State == LinkState.Closed)
                 return;
             State = LinkState.Closed;
             CloseReason = reason;
             Debug.Log("[ONLINE] link closed: " + reason);
+            // The reason rides in the disconnect packet itself. Sent as a separate message, it
+            // could lose the race with the disconnect, and the friend would only hear "left".
+            if (reasonForFriend != null && peer != null && peer.ConnectionState == ConnectionState.Connected)
+                net.DisconnectPeer(peer, System.Text.Encoding.UTF8.GetBytes(reasonForFriend));
             net.Stop(sendDisconnectMessages: true);
         }
 
@@ -193,8 +197,14 @@ namespace FrogSmashers.Online
 
         public void OnPeerDisconnected(NetPeer disconnected, DisconnectInfo info)
         {
-            if (disconnected == peer)
-                Close(info.Reason == DisconnectReason.RemoteConnectionClose ? "Your friend left." : "Connection lost (" + info.Reason + ").");
+            if (disconnected != peer)
+                return;
+            if (info.Reason != DisconnectReason.RemoteConnectionClose)
+                Close("Connection lost (" + info.Reason + ").");
+            else if (info.AdditionalData != null && info.AdditionalData.AvailableBytes > 0)
+                Close(System.Text.Encoding.UTF8.GetString(info.AdditionalData.GetRemainingBytes()));
+            else
+                Close("Your friend left.");
         }
 
         public void OnNetworkReceive(NetPeer from, NetPacketReader reader, byte channel, DeliveryMethod method)

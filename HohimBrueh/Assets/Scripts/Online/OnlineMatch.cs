@@ -257,9 +257,10 @@ namespace FrogSmashers.Online
 
         /// <summary>
         /// Ends the Online Match: tells the other Peer, closes the link, and returns to the title
-        /// screen with <paramref name="message"/> shown for a few seconds.
+        /// screen with <paramref name="message"/> shown for a few seconds. The other Peer shows
+        /// <paramref name="messageForFriend"/>, or "Your friend left." when it's null.
         /// </summary>
-        public static void End(string message)
+        public static void End(string message, string messageForFriend = null)
         {
             if (instance == null)
                 return;
@@ -268,7 +269,7 @@ namespace FrogSmashers.Online
             var ending = instance;
             instance = null;
             SimulationDriver.EndOnlineSession();
-            ending.link.Close(message);
+            ending.link.Close(message, messageForFriend);
             Destroy(ending.gameObject);
             ShowMessage(message);
 
