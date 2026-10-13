@@ -169,6 +169,7 @@ public class GameController : MonoBehaviour, ISimulated
         // once here and reused; nothing creates or destroys them during the Round.
         // After the Players, because each Character gets its Slot's Player.
         SimWorld.CreatePools(characterPrefab, flyPrefab);
+        SimWorld.ReportStrayObjects();
 
         // Hand the Round to the driver, which seeds the random stream and picks the mode.
         // The join screen is a lobby, not a Round, so it never runs a Sync Test.

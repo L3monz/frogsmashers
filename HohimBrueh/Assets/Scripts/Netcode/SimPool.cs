@@ -97,6 +97,12 @@ namespace FrogSmashers.Netcode
             return alive[slot];
         }
 
+        /// <summary>True when <paramref name="item"/> is one of this pool's objects.</summary>
+        public bool Contains(T item)
+        {
+            return System.Array.IndexOf(items, item) >= 0;
+        }
+
         /// <summary>
         /// Brings the slot's object into play at <paramref name="position"/>, reset to its
         /// starting state. Spawning a slot that is already alive resets it in place.
