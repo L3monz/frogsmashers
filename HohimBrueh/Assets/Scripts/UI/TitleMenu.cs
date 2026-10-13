@@ -4,12 +4,13 @@ using UnityEngine.UI;
 namespace FrogSmashers
 {
     /// <summary>
-    /// The title screen's choice between local play (the join screen) and online play (the
-    /// Online screen), shown once the title animation has finished.
+    /// The title screen's choice between local play (the join screen), online play (the
+    /// Online screen) and quitting the game, shown once the title animation has finished.
     /// </summary>
     public sealed class TitleMenu : MonoBehaviour
     {
-        private static readonly string[] Items = { "LOCAL PLAY", "ONLINE" };
+        private static readonly string[] Items = { "LOCAL PLAY", "ONLINE", "QUIT" };
+        private const int LocalPlay = 0, Online = 1, Quit = 2;
 
         private readonly MenuInput input = new MenuInput();
         private Canvas canvas;
@@ -64,14 +65,22 @@ namespace FrogSmashers
             if (!visible || Time.frameCount == shownOnFrame)
                 return;
 
-            if (input.Up || input.Down)
-                selected = 1 - selected;
+            if (input.Up)
+                selected = (selected + Items.Length - 1) % Items.Length;
+            if (input.Down)
+                selected = (selected + 1) % Items.Length;
+            // Back only moves to QUIT, so one stray Escape (the key that left the join screen or
+            // a match) can't close the game.
+            if (input.Back)
+                selected = Quit;
             if (input.Confirm)
             {
-                if (selected == 1)
+                if (selected == Online)
                     OnlineScreen.Open();
-                else
+                else if (selected == LocalPlay)
                     UnityEngine.SceneManagement.SceneManager.LoadScene("JoinScreen");
+                else
+                    Application.Quit();
                 return;
             }
 
