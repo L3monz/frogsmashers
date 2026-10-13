@@ -15,7 +15,7 @@ namespace FrogSmashers.Netcode
     /// and never reaches the simulation.
     ///
     /// Each scene with a GameController hands the driver a <see cref="FrogSimulation"/>. The
-    /// driver runs it in one of two modes:
+    /// driver runs it in one of three modes:
     /// - <see cref="Mode.Direct"/>: one AdvanceFrame per Tick. No Saved States.
     /// - <see cref="Mode.SyncTest"/>: through Hindsight's SyncTestSession, which every 8 Ticks
     ///   rolls back 8 Ticks and runs them again, and compares checksums. A Desync is reported

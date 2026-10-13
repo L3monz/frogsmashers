@@ -5,7 +5,7 @@
 #
 # The game talks to the Hootenanny rendezvous and relay server with the same message code
 # the server uses: Hootenanny.Protocol, one netstandard2.0 DLL in Assets/Plugins/Hootenanny/.
-# The default Hootenanny path is the sibling folder C:\gamedev-projects\hootenanny.
+# The default Hootenanny path is ../hootenanny, the folder next to this repository's.
 #
 # Close Unity first, for the same reason as tools/update-hindsight.sh.
 set -euo pipefail
