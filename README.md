@@ -14,6 +14,10 @@ Related repositories:
 
 Work is tracked in Linear (project "FrogSmashers: Rollback Netcode").
 
+**Architecture:** how the game, Hindsight and the server fit together is drawn in
+[`vault/`](./vault/README.md#architecture), the project's notes (open it as an Obsidian vault, or
+read it here on GitHub).
+
 ## Setup
 
 - **Unity 2019.2.12f1** (exactly this version) with the **Windows Build Support (IL2CPP)**
