@@ -4,8 +4,8 @@
 # Usage: tools/update-hindsight.sh [path/to/hindsight]
 #
 # Frog Smashers uses Hindsight as two compiled DLLs in Assets/Plugins/Hindsight/. This
-# replaces the manual build-and-copy. The default Hindsight path is the sibling folder
-# C:\gamedev-projects\hindsight.
+# replaces the manual build-and-copy. The default Hindsight path is ../hindsight, the
+# folder next to this repository's.
 #
 # Close Unity first. Unity reloads plugins when it gets focus, and replacing a DLL while
 # the editor is in Play mode reloads the scripts in the middle of play.

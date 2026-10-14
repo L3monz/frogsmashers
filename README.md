@@ -9,10 +9,14 @@ Related repositories:
 
 | Repo | What |
 |---|---|
-| [L3monz/rollback](https://github.com/L3monz/rollback) (Hindsight) | The rollback netcode library, engine-agnostic C#. The game uses it as two DLLs. |
+| [L3monz/hindsight](https://github.com/L3monz/hindsight) (Hindsight) | The rollback netcode library, engine-agnostic C#. The game uses it as two DLLs. |
 | L3monz/hootenanny (private; ask for access) | The server that matches players by Room Code and relays traffic. Runs on AWS. |
 
 Work is tracked in Linear (project "FrogSmashers: Rollback Netcode").
+
+**Architecture:** how the game, Hindsight and the server fit together is drawn in
+[`FrogSmashers/`](./FrogSmashers/README.md#architecture), the project's notes (open it as an Obsidian vault, or
+read it here on GitHub).
 
 ## Setup
 
