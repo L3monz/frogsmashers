@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using FrogSmashers.Netcode;
 using Hindsight.Core;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace FrogSmashers.Tests
 {
@@ -207,6 +209,32 @@ namespace FrogSmashers.Tests
             Assert.That(names, Has.Member("Player[2].score"));
             Assert.That(names, Has.Member("Character[5].position.x"));
             Assert.That(names, Has.Member("Fly[0].alive"));
+        }
+
+        // SMA-60: after the scene ends, its simulation must not write the old Round into the
+        // next scene, whatever calls it.
+        [Test]
+        public void ADetachedSimulationLeavesTheGameAlone()
+        {
+            SimClock.SeekTo(100);
+            players[1].score = 3;
+            byte[] saved = Save();
+
+            SimClock.SeekTo(42);
+            SimRng.State = 0x1234UL;
+            players[1].score = 0;
+            simulation.Detach();
+
+            LogAssert.Expect(LogType.Error, new Regex(@"^\[SIM\] LoadState on the simulation of a scene that has ended"));
+            Load(saved);
+            simulation.AdvanceFrame(new FrogInput[6]);
+            simulation.SaveState(new StateBuffer());
+
+            Assert.That(SimClock.Tick, Is.EqualTo(42));
+            Assert.That(SimRng.State, Is.EqualTo(0x1234UL));
+            Assert.That(players[1].score, Is.Zero);
+            // One error, not one per call: a drain polls every frame.
+            LogAssert.NoUnexpectedReceived();
         }
     }
 }

@@ -55,10 +55,12 @@ namespace FrogSmashers.Netcode
 
         // Online play. The session of the current Round, and the one of the Round that just
         // ended, which keeps answering for a moment so the other Peer receives our last inputs
-        // (without them it can't confirm the end of the Round, and would time out).
+        // (without them it can't confirm the end of the Round, and would time out). The
+        // drained session has stopped simulating: see StartDraining.
         private const float DrainSeconds = 2f;
         private PeerToPeerSession<FrogInput> online;
         private PeerToPeerSession<FrogInput> draining;
+        private float drainStarted;
         private float drainUntil;
         private int waitTicks;
         private int onlineRollbacksSeen;
@@ -106,7 +108,8 @@ namespace FrogSmashers.Netcode
             {
                 return instance != null
                     && ((instance.session != null && instance.session.InRollback)
-                        || (instance.online != null && instance.online.InRollback));
+                        || (instance.online != null && instance.online.InRollback)
+                        || (instance.draining != null && instance.draining.InRollback));
             }
         }
 
@@ -237,6 +240,9 @@ namespace FrogSmashers.Netcode
         /// <summary>The scene's GameController is going away. Ignored if a newer scene already took over.</summary>
         public static void EndScene(FrogSimulation simulation)
         {
+            // Whoever owns it now, this scene's simulation must not run again.
+            if (simulation != null)
+                simulation.Detach();
             if (instance == null || instance.simulation != simulation)
                 return;
             if (instance.online != null)
@@ -274,6 +280,12 @@ namespace FrogSmashers.Netcode
             int local = FrogSmashers.Online.OnlineMatch.LocalSlot;
             int remote = FrogSmashers.Online.OnlineMatch.RemoteSlot;
 
+            // The other Peer is starting this Round too, so it has finished the last one and
+            // needs nothing more from us. A drain still running would also take this
+            // session's datagrams from the shared link.
+            if (draining != null)
+                EndDrain("the next Round started");
+
             // Six Players, as offline, so the Slot layout and the Saved State don't change.
             // Slots 2 to 5 are unused: every Peer gives them a blank input.
             var config = new RollbackConfig(playerCount: 6)
@@ -298,29 +310,63 @@ namespace FrogSmashers.Netcode
                 + ", setup " + setup.SetupHash.ToString("X8") + ", build " + setup.BuildId);
         }
 
+        /// <summary>
+        /// The Round's scene is ending: keep its session answering, but stop it simulating.
+        /// The Round ends once its last Tick is confirmed, and by then this Peer has usually
+        /// predicted a few Ticks past it. The other Peer really played those Ticks, and its
+        /// inputs for them arrive during the drain. A session still simulating would roll back
+        /// and load the old Round into the next scene (SMA-60).
+        /// </summary>
         private void StartDraining()
         {
+            if (draining != null)
+                EndDrain("another Round ended");
+            online.StopSimulating();
             draining = online;
             online = null;
             // sim-guard: allow a network timeout for the ended Round's session; not simulation
-            drainUntil = Time.realtimeSinceStartup + DrainSeconds;
+            drainStarted = Time.realtimeSinceStartup;
+            drainUntil = drainStarted + DrainSeconds;
         }
 
         // Keeps the last Round's session answering until the other Peer has every input it
-        // needs, or briefly at most. Its Ticks are all confirmed, so it never rolls back.
+        // needs, or briefly at most. It has stopped simulating, so nothing it receives can
+        // touch the game.
         private void DrainPreviousSession()
         {
             if (draining == null)
                 return;
-            FrogSmashers.Online.OnlineMatch.Link.Poll();
-            draining.Poll();
-            while (draining.TryGetEvent(out SessionEvent ignored)) { }
             // sim-guard: allow a network timeout for the ended Round's session; not simulation
-            if (Time.realtimeSinceStartup > drainUntil
-                || draining.GetStats(FrogSmashers.Online.OnlineMatch.Link.Remote).UnacknowledgedFrames == 0)
+            if (Time.realtimeSinceStartup > drainUntil)
             {
+                EndDrain("timed out");
+                return;
+            }
+            try
+            {
+                FrogSmashers.Online.OnlineMatch.Link.Poll();
+                draining.Poll();
+                while (draining.TryGetEvent(out SessionEvent ignored)) { }
+                if (draining.HasEnded)
+                    EndDrain("the session ended");
+                else if (draining.GetStats(FrogSmashers.Online.OnlineMatch.Link.Remote).UnacknowledgedFrames == 0)
+                    EndDrain("acknowledged");
+            }
+            catch (Exception e)
+            {
+                // Drop it without Disconnect: if the other Peer is still confirming its Round,
+                // a disconnect message would end its Match. Going quiet costs it a timeout at most.
+                Debug.LogError("[ONLINE] the previous Round's session failed while draining, dropped: " + e);
                 draining = null;
             }
+        }
+
+        private void EndDrain(string why)
+        {
+            // sim-guard: allow measures the drain for the log; not simulation
+            float ms = (Time.realtimeSinceStartup - drainStarted) * 1000f;
+            Debug.Log("[ONLINE] previous Round's session drained: " + why + " after " + ms.ToString("0") + " ms");
+            draining = null;
         }
 
         /// <summary>
