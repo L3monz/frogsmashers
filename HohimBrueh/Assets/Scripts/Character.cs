@@ -1448,6 +1448,10 @@ public class Character : MonoBehaviour, ISimulated, ISpawnable
             if (fly != null)
             {
                 var flyComp = fly.GetComponent<Fly>();
+                // Development builds: only the pooled fly is saved, so catching any other fly
+                // desyncs the first Peer that rolls back (SMA-51). Report it; play is unchanged.
+                if (Debug.isDebugBuild && flyComp != SimWorld.Fly)
+                    Debug.LogError("[SIM] tongue touched '" + flyComp.name + "', which is not the pooled fly");
                 if (flyComp.TryClaim(this))
                 {
                     tongueState = TongueState.RetractingHitFly;
