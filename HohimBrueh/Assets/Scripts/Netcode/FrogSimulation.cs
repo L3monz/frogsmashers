@@ -34,6 +34,11 @@ namespace FrogSmashers.Netcode
         // Frame, or -1. See InjectDesyncAfterThisFrame.
         private int nudgeSlot = -1;
 
+        // Set when the scene ends. Its state is static (the clock, the random stream, the
+        // Players, the pools), so a call after that would write into whatever scene came next.
+        private bool detached;
+        private bool reportedDetachedCall;
+
         /// <summary>
         /// Called after every run of a Tick, including each run during a Rollback, with the
         /// Tick's number and inputs. For the online replay recording, which keeps each Tick's
@@ -68,8 +73,32 @@ namespace FrogSmashers.Netcode
         /// </summary>
         public static long TotalSaveLoadAllocatedBytes { get; private set; }
 
+        /// <summary>
+        /// The scene is ending: from now on SaveState, LoadState and AdvanceFrame do nothing
+        /// and log one error. Nothing should call them, because the drained session has stopped
+        /// simulating; if something does, the next scene is left alone (SMA-60).
+        /// </summary>
+        public void Detach()
+        {
+            detached = true;
+        }
+
+        private bool RefuseWhenDetached(string call)
+        {
+            if (!detached)
+                return false;
+            if (!reportedDetachedCall)
+            {
+                reportedDetachedCall = true;
+                Debug.LogError("[SIM] " + call + " on the simulation of a scene that has ended; ignored");
+            }
+            return true;
+        }
+
         public void SaveState(StateBuffer state)
         {
+            if (RefuseWhenDetached("SaveState"))
+                return;
             long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             stream.BeginWrite();
             SyncAll(stream);
@@ -79,6 +108,8 @@ namespace FrogSmashers.Netcode
 
         public void LoadState(StateBuffer state)
         {
+            if (RefuseWhenDetached("LoadState"))
+                return;
             long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
             stream.BeginRead(state.Data, state.Length);
             SyncAll(stream);
@@ -88,6 +119,8 @@ namespace FrogSmashers.Netcode
 
         public void AdvanceFrame(FrogInput[] inputs)
         {
+            if (RefuseWhenDetached("AdvanceFrame"))
+                return;
             TickInput.Apply(inputs);
 
             // Push every transform into Box2D before any hit check runs. After a load, this
