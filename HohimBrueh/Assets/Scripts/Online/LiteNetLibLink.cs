@@ -39,8 +39,9 @@ namespace FrogSmashers.Online
         internal const byte RelayKindLobby = 2;
         internal const byte RelayKindGoodbye = 3;
 
-        // Long enough for a goodbye on the relay path to leave the socket before it closes.
-        private const int RelayGoodbyeMs = 300;
+        // Long enough for the last reliable messages (the relay goodbye, the Match summary to the
+        // server) to leave the socket before it closes.
+        private const int CloseDelayMs = 300;
 
         // Received gameplay datagrams wait here until the session reads them. Buffers are reused,
         // so receiving allocates nothing once the pool has grown.
@@ -164,20 +165,27 @@ namespace FrogSmashers.Online
             {
                 // The reason rides in the disconnect packet itself. Sent as a separate message, it
                 // could lose the race with the disconnect, and the friend would only hear "left".
-                if (reasonForFriend != null && direct.ConnectionState == ConnectionState.Connected)
-                    net.DisconnectPeer(direct, System.Text.Encoding.UTF8.GetBytes(reasonForFriend));
-                net.Stop(sendDisconnectMessages: true);
+                if (direct.ConnectionState == ConnectionState.Connected)
+                {
+                    if (reasonForFriend != null)
+                        net.DisconnectPeer(direct, System.Text.Encoding.UTF8.GetBytes(reasonForFriend));
+                    else
+                        net.DisconnectPeer(direct);
+                }
             }
             else
             {
                 // Through the relay there is no disconnect packet between the two games, so say
-                // goodbye as a reliable message, and give it a moment to leave before the socket
-                // closes. Closing also leaves the Room, which tells the friend in any case.
+                // goodbye as a reliable message. Closing also leaves the Room, which tells the
+                // friend in any case.
                 SendRelayedReliable(server, RelayKindGoodbye,
                     System.Text.Encoding.UTF8.GetBytes(reasonForFriend ?? ""));
-                var closing = net;
-                System.Threading.Tasks.Task.Delay(RelayGoodbyeMs).ContinueWith(_ => closing.Stop(sendDisconnectMessages: true));
             }
+
+            // The socket is shared with the server connection, which may still have reliable
+            // messages to send, so give them a moment before it closes.
+            var closing = net;
+            System.Threading.Tasks.Task.Delay(CloseDelayMs).ContinueWith(_ => closing.Stop(sendDisconnectMessages: true));
         }
 
         // ---- From the lobby that owns the socket -----------------------------------------

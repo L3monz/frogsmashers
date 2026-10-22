@@ -274,7 +274,14 @@ namespace FrogSmashers.Online
                 direct = null;
             }
             link = relayed ? LiteNetLibLink.ThroughRelay(net, PollEvents, server) : LiteNetLibLink.Direct(net, PollEvents, direct);
-            Ready = new OnlineMatchStart { Link = link, IsRoomOwner = isRoomOwner, Relayed = relayed };
+            Ready = new OnlineMatchStart
+            {
+                Link = link,
+                IsRoomOwner = isRoomOwner,
+                Relayed = relayed,
+                RoomCode = isRoomOwner ? RoomCode : codeToJoin,
+                SendMatchSummary = SendMatchSummary,
+            };
             phase = Phase.Done;
             Status = LobbyStatus.Ready;
             Debug.Log("[ONLINE] lobby: ready, " + link.Description + " after " + (clock.ElapsedMilliseconds - punchStarted) + " ms");
@@ -300,6 +307,18 @@ namespace FrogSmashers.Online
         private void SendLobby(byte message)
         {
             LiteNetLibLink.SendRelayedReliable(server, LiteNetLibLink.RelayKindLobby, new[] { message });
+        }
+
+        // The server writes it to its log. Both games stay connected to the server for the whole
+        // Match, so it goes the same way on the direct and the relay path.
+        private void SendMatchSummary(string json)
+        {
+            if (server == null || server.ConnectionState != ConnectionState.Connected)
+            {
+                Debug.Log("[ONLINE] Match summary not sent: no connection to the server");
+                return;
+            }
+            server.Send(Messages.MatchSummary(json), DeliveryMethod.ReliableOrdered);
         }
 
         private bool IsIntroduced(IPEndPoint endPoint)
