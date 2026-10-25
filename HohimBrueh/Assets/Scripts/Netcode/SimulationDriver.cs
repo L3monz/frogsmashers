@@ -89,6 +89,15 @@ namespace FrogSmashers.Netcode
         /// <summary>Raised on a Desync, with one line per differing field (at most 10).</summary>
         public static event Action<int, IList<string>> DesyncReported;
 
+        /// <summary>Raised when both Peers have confirmed the Tick that ended an Online Round, with that Tick.</summary>
+        public static event Action<int> OnlineRoundEnded;
+
+        /// <summary>Raised on an Online Desync, with the Tick whose checksums differ.</summary>
+        public static event Action<int> OnlineDesyncDetected;
+
+        /// <summary>Raised once per second during an Online Round, with the session's view of the network.</summary>
+        public static event Action<NetworkStats> OnlineStatsSampled;
+
         /// <summary>The mode the next Round starts in. Sync Test in the editor and development builds.</summary>
         public static Mode NextRoundMode { get; private set; }
 
@@ -580,6 +589,8 @@ namespace FrogSmashers.Netcode
             Debug.Log("[ONLINE] Round over at Tick " + simulation.RoundOverTick + " (confirmed), "
                 + online.RollbackCount + " Rollbacks, " + online.RolledBackFrames + " Ticks run again");
             roundEnded = true;
+            if (OnlineRoundEnded != null)
+                OnlineRoundEnded(simulation.RoundOverTick);
             ReplayCheck.KeepOnlineTicksThrough(simulation.RoundOverTick, roundOver: true);
             StartDraining();
             GameController.FinishRoundAfterSimulation();
@@ -635,6 +646,8 @@ namespace FrogSmashers.Netcode
             TotalDesyncs++;
             Debug.LogWarning("[SIM] desync online tick=" + e.Frame + " local=" + e.LocalChecksum.ToString("X8")
                 + " remote=" + e.RemoteChecksum.ToString("X8"));
+            if (OnlineDesyncDetected != null)
+                OnlineDesyncDetected(e.Frame);
             if (!online.TryGetCheckpointState(e.Frame, out StateBuffer state))
                 return;
 
@@ -665,6 +678,8 @@ namespace FrogSmashers.Netcode
             // sim-guard: allow paces a diagnostics log line; not simulation
             nextOnlineStats = Time.realtimeSinceStartup + 1f;
             var stats = online.GetStats(FrogSmashers.Online.OnlineMatch.Link.Remote);
+            if (OnlineStatsSampled != null)
+                OnlineStatsSampled(stats);
             Debug.Log("[ONLINE] tick=" + online.FrameCount + " confirmed=" + online.LastConfirmedFrame
                 + " rtt=" + stats.RoundTripMs + "ms loss=" + stats.LossPercent.ToString("0.0") + "%"
                 + " advantage=" + stats.LocalFrameAdvantage + "/" + stats.RemoteFrameAdvantage

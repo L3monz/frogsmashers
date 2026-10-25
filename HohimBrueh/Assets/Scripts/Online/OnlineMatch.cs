@@ -30,6 +30,7 @@ namespace FrogSmashers.Online
         private static float lastMessageUntil;
 
         private IOnlineLink link;
+        private MatchReport report;
         private bool isRoomOwner;
         private bool relayed;
         private bool setupReceived;
@@ -74,6 +75,7 @@ namespace FrogSmashers.Online
             instance.isRoomOwner = start.IsRoomOwner;
             instance.relayed = start.Relayed;
             instance.link = start.Link;
+            instance.report = new MatchReport(start);
             if (Debug.isDebugBuild)
             {
                 string[] args = Environment.GetCommandLineArgs();
@@ -239,8 +241,12 @@ namespace FrogSmashers.Online
 
             Debug.Log("[ONLINE] Match ended: " + message);
             var ending = instance;
+            int localSlot = LocalSlot;
             instance = null;
             SimulationDriver.EndOnlineSession();
+            // Before the link closes: on the direct path, closing the link closes the socket the
+            // server connection uses too.
+            ending.report.Finish(message, localSlot);
             ending.link.Close(message, messageForFriend);
             Destroy(ending.gameObject);
             ShowMessage(message);

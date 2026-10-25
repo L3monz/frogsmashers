@@ -53,5 +53,14 @@ namespace FrogSmashers.Online
 
         /// <summary>True when the two games talk through a relay server, not directly. For the logs and testing.</summary>
         public bool Relayed;
+
+        /// <summary>The Room Code both players used, or null for lobbies without codes. For the logs.</summary>
+        public string RoomCode;
+
+        /// <summary>
+        /// Sends the Match summary (a JSON object) to where this lobby keeps them, so nobody has
+        /// to collect logs from the players. Null when the lobby has nowhere to send it.
+        /// </summary>
+        public System.Action<string> SendMatchSummary;
     }
 }
